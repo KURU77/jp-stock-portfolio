@@ -520,6 +520,79 @@ body {
 
 .panel-title { margin: 0 0 .8rem; font-size: .95rem; }
 
+/* サマリーの直下に置くパネルは、上の余白を詰める */
+.panel-tight { margin-top: .75rem; }
+
+/* ---------- 口座別サマリー ---------- */
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .6rem;
+}
+
+.account-card {
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: .6rem .75rem;
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.account-card:hover { border-color: var(--border); }
+.account-card.is-on { border-color: var(--accent); background: var(--accent-weak); }
+
+.ac-head { display: flex; align-items: center; gap: .4rem; }
+.ac-count { font-size: .72rem; color: var(--text-muted); }
+.ac-value { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.ac-rows {
+  display: flex;
+  flex-direction: column;
+  font-size: .76rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- NISA枠のゲージ ---------- */
+.gauge { margin-bottom: .8rem; }
+
+.gauge-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+  font-size: .78rem;
+  font-weight: 600;
+  margin-bottom: .25rem;
+  flex-wrap: wrap;
+}
+
+.gauge-head .num { color: var(--text-muted); font-weight: 600; }
+
+.gauge-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.gauge-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ok);
+  transition: width .35s ease;
+}
+
+.gauge-bar > span.over { background: var(--danger); }
+.gauge-rest { margin: .2rem 0 0; font-size: .72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
 .calendar {
   display: grid;
   /* minmax(0, 1fr) にしないと、中身の最小幅で12列が画面からはみ出す */
@@ -764,6 +837,8 @@ body {
   .cal-amount { display: none; }
   .kv { grid-template-columns: repeat(2, 1fr); }
   .card-actions .btn { flex: 1 1 30%; }
+  .account-grid { grid-template-columns: 1fr; }
+  .toolbar select { flex: 1 1 45%; min-width: 0; }
 }
 
 /* ホーム画面から起動したとき（ブラウザのUIが無い状態） */

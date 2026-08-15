@@ -13,6 +13,21 @@
   /** 上場株式の配当にかかる税率（所得税15.315% + 住民税5%）。設定で変更可。 */
   const DEFAULT_TAX_RATE = 20.315;
 
+  /** 口座区分。NISA は配当が非課税なので taxable: false にしている。 */
+  const ACCOUNTS = [
+    { value: 'tokutei', label: '特定口座', short: '特定', taxable: true },
+    { value: 'nisa-growth', label: 'NISA（成長投資枠）', short: 'NISA成長', taxable: false, nisa: 'growth' },
+    { value: 'nisa-tsumitate', label: 'NISA（つみたて投資枠）', short: 'NISAつみたて', taxable: false, nisa: 'tsumitate' },
+    { value: 'ippan', label: '一般口座', short: '一般', taxable: true },
+  ];
+  const DEFAULT_ACCOUNT = 'tokutei';
+
+  /** NISA の生涯非課税保有限度額（簿価）。うち成長投資枠は1,200万円まで。 */
+  const NISA_TOTAL_LIMIT = 18_000_000;
+  const NISA_GROWTH_LIMIT = 12_000_000;
+
+  const accountOf = (h) => ACCOUNTS.find((a) => a.value === h.account) ?? ACCOUNTS[0];
+
   const $ = (sel) => document.querySelector(sel);
 
   const el = {
@@ -20,6 +35,11 @@
     empty: $('#empty'),
     search: $('#search'),
     sortBy: $('#sortBy'),
+    filterAccount: $('#filterAccount'),
+    accountPanel: $('#accountPanel'),
+    accountGrid: $('#accountGrid'),
+    nisaPanel: $('#nisaPanel'),
+    nisaGauges: $('#nisaGauges'),
     viewMode: $('#viewMode'),
     afterTax: $('#afterTax'),
     updatedLine: $('#updatedLine'),
@@ -42,6 +62,7 @@
     holdingError: $('#holdingError'),
     codeInput: $('#codeInput'),
     nameInput: $('#nameInput'),
+    accountInput: $('#accountInput'),
     priceInput: $('#priceInput'),
     sharesInput: $('#sharesInput'),
     unitInput: $('#unitInput'),
@@ -100,6 +121,8 @@
       afterTax: false,
       view: 'card',
       sort: 'value',
+      /** '' | 'nisa' | ACCOUNTS の value */
+      account: '',
     };
   }
 
@@ -144,6 +167,8 @@
       id: typeof h.id === 'string' && h.id ? h.id : newId(),
       code: String(h.code ?? '').trim().toUpperCase(),
       name: String(h.name ?? ''),
+      // 口座区分。旧データ（口座なし）は特定口座として扱う。
+      account: ACCOUNTS.some((a) => a.value === h.account) ? h.account : DEFAULT_ACCOUNT,
       shares: Math.max(0, Math.floor(num(h.shares) ?? 0)),
       avgPrice: Math.max(0, num(h.avgPrice) ?? 0),
       unit: Math.max(1, Math.floor(num(h.unit) ?? 100)),
@@ -194,6 +219,23 @@
     return 1 - rate / 100;
   }
 
+  /** 銘柄ごとの手取り率。NISA口座は配当が非課税なので 1 のまま。 */
+  function taxFactorFor(h) {
+    return accountOf(h).taxable ? taxFactor() : 1;
+  }
+
+  /** 口座の絞り込み。'nisa' は成長・つみたての両方にあたる。 */
+  function matchAccount(h, filter) {
+    if (!filter) return true;
+    if (filter === 'nisa') return !accountOf(h).taxable;
+    return h.account === filter;
+  }
+
+  /** いま選ばれている口座に属する銘柄（検索語は含めない） */
+  function accountFiltered() {
+    return holdings.filter((h) => matchAccount(h, settings.account));
+  }
+
   /** 保有株数に対して有効な優待の段（同株数の段が複数あるときはまとめて返す） */
   function currentTier(yutai, shares) {
     if (!yutai || yutai.abolished || !yutai.tiers.length) return null;
@@ -231,7 +273,7 @@
     const cost = h.avgPrice * shares;
     const value = price != null ? price * shares : null;
     const divGross = dps != null ? dps * shares : null;
-    const divShown = divGross != null ? (settings.afterTax ? divGross * taxFactor() : divGross) : null;
+    const divShown = divGross != null ? (settings.afterTax ? divGross * taxFactorFor(h) : divGross) : null;
     const tier = currentTier(h.yutai, shares);
     const yutaiValue = tier ? tier.value : 0;
     return {
@@ -253,10 +295,10 @@
     };
   }
 
-  function totals() {
+  function totals(rows = accountFiltered()) {
     let cost = 0, value = 0, divShown = 0, yutai = 0;
     let hasPrice = false, hasDiv = false;
-    for (const h of holdings) {
+    for (const h of rows) {
       const c = calc(h);
       cost += c.cost;
       if (c.value != null) { value += c.value; hasPrice = true; }
@@ -305,6 +347,8 @@
 
   function render() {
     renderStats();
+    renderAccountPanel();
+    renderNisaPanel();
     renderList();
     renderCalendar();
     renderYutaiPanel();
@@ -312,6 +356,10 @@
 
   function renderStats() {
     const t = totals();
+    const filterLabel = settings.account
+      ? (settings.account === 'nisa' ? 'NISA合計' : (ACCOUNTS.find((a) => a.value === settings.account)?.label ?? ''))
+      : '';
+    $('#statValueLabel').textContent = filterLabel ? `評価額（${filterLabel}）` : '評価額';
     $('#statValue').textContent = t.value == null ? '—' : yen(t.value);
     $('#statCost').textContent = yen(t.cost);
 
@@ -321,7 +369,9 @@
       ? '—'
       : `${esc(signed(t.pl))}<span class="sub">${esc(t.plRate == null ? '' : `(${t.plRate > 0 ? '+' : ''}${(t.plRate * 100).toFixed(2)}%)`)}</span>`;
 
-    $('#statDivLabel').textContent = settings.afterTax ? `年間配当（税引後 ${settings.taxRate}%）` : '年間配当（税引前）';
+    $('#statDivLabel').textContent = settings.afterTax
+      ? `年間配当（税引後 ${settings.taxRate}%・NISAは非課税）`
+      : '年間配当（税引前）';
     $('#statDiv').innerHTML = t.div == null
       ? '—'
       : `${esc(yen(t.div))}<span class="sub">${esc(t.divYield == null ? '' : `利回り ${(t.divYield * 100).toFixed(2)}%`)}</span>`;
@@ -338,9 +388,71 @@
     }
   }
 
+  /** 口座ごとの小計。2口座以上を使っているときだけ表示する。 */
+  function renderAccountPanel() {
+    const used = ACCOUNTS
+      .map((a) => ({ account: a, rows: holdings.filter((h) => h.account === a.value) }))
+      .filter((g) => g.rows.length);
+
+    el.accountPanel.hidden = used.length < 2;
+    if (used.length < 2) return;
+
+    el.accountGrid.innerHTML = used.map(({ account, rows }) => {
+      const t = totals(rows);
+      const active = settings.account === account.value || (settings.account === 'nisa' && !account.taxable);
+      return `
+<button type="button" class="account-card${active ? ' is-on' : ''}" data-account="${esc(account.value)}">
+  <span class="ac-head">
+    <span class="badge ${account.taxable ? '' : 'ok'}">${esc(account.label)}</span>
+    <span class="ac-count">${rows.length}銘柄</span>
+  </span>
+  <span class="ac-value">${esc(yen(t.value ?? t.cost))}</span>
+  <span class="ac-rows">
+    <span>取得 ${esc(yen(t.cost))}</span>
+    <span class="${plClass(t.pl)}">損益 ${esc(signed(t.pl))}${t.plRate == null ? '' : `（${t.plRate > 0 ? '+' : ''}${(t.plRate * 100).toFixed(1)}%）`}</span>
+    <span>配当 ${esc(yen(t.div))}${!account.taxable && settings.afterTax ? '（非課税）' : ''}</span>
+  </span>
+</button>`;
+    }).join('');
+  }
+
+  /** NISA の生涯非課税保有限度額（簿価）の使用状況 */
+  function renderNisaPanel() {
+    const nisaRows = holdings.filter((h) => !accountOf(h).taxable);
+    el.nisaPanel.hidden = nisaRows.length === 0;
+    if (!nisaRows.length) return;
+
+    const growth = nisaRows
+      .filter((h) => accountOf(h).nisa === 'growth')
+      .reduce((s, h) => s + h.avgPrice * h.shares, 0);
+    const tsumitate = nisaRows
+      .filter((h) => accountOf(h).nisa === 'tsumitate')
+      .reduce((s, h) => s + h.avgPrice * h.shares, 0);
+
+    const gauge = (label, used, limit) => {
+      const rate = limit > 0 ? Math.min(used / limit, 1) : 0;
+      const over = used > limit;
+      return `
+<div class="gauge">
+  <div class="gauge-head">
+    <span>${esc(label)}</span>
+    <span class="num">${esc(yen(used))} / ${esc(yen(limit))}（${(rate * 100).toFixed(1)}%）</span>
+  </div>
+  <div class="gauge-bar"><span class="${over ? 'over' : ''}" style="width:${(rate * 100).toFixed(1)}%"></span></div>
+  <p class="gauge-rest">残り ${esc(yen(Math.max(limit - used, 0)))}${over ? '（上限を超えています）' : ''}</p>
+</div>`;
+    };
+
+    // つみたて投資枠に単独の上限は無い（全体1,800万円の内数）ので、金額だけ添える。
+    el.nisaGauges.innerHTML =
+      gauge('NISA全体（簿価）', growth + tsumitate, NISA_TOTAL_LIMIT) +
+      gauge('うち成長投資枠', growth, NISA_GROWTH_LIMIT) +
+      (tsumitate > 0 ? `<p class="gauge-rest">うちつみたて投資枠：${esc(yen(tsumitate))}</p>` : '');
+  }
+
   function visibleHoldings() {
     const q = el.search.value.trim().toLowerCase();
-    let rows = holdings.filter((h) => {
+    let rows = accountFiltered().filter((h) => {
       if (!q) return true;
       return [h.code, h.name, h.memo, h.quote?.nameEn].filter(Boolean).join(' ').toLowerCase().includes(q);
     });
@@ -399,7 +511,8 @@
     return `
 <article class="card" data-id="${esc(h.id)}">
   <div class="card-top">
-    <h3 class="card-title">${esc(h.name || '(名称未設定)')}<span class="card-code">${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
+    <h3 class="card-title">${esc(h.name || '(名称未設定)')}
+      <span class="card-code"><span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span> ${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
     <div class="price-box">
       <span class="price-now">${c.price == null ? '—' : esc(c.price.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))}<span style="font-size:.7em">円</span></span>
       ${chg == null ? '' : `<span class="price-chg ${plClass(chg)}">${chg > 0 ? '+' : ''}${esc(chg.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))} (${chgRate > 0 ? '+' : ''}${esc((chgRate * 100).toFixed(2))}%)</span>`}
@@ -417,7 +530,7 @@
   </div>
 
   <div class="section-mini">
-    <p class="mini-title">年間配当${settings.afterTax ? '（税引後）' : '（税引前）'}${h.divPerShare != null ? '<span class="badge accent">手入力</span>' : ''}</p>
+    <p class="mini-title">年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}${h.divPerShare != null ? '<span class="badge accent">手入力</span>' : ''}</p>
     <div class="dividend-line">
       <span class="dividend-amount">${esc(yen(c.divShown))}</span>
       <span class="badge">1株 ${c.dps == null ? '—' : esc(`${c.dps.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}円`)}</span>
@@ -451,6 +564,7 @@
       return `
 <tr data-id="${esc(h.id)}">
   <td>${esc(h.name || h.code)}<br><span class="k" style="font-size:.72rem;color:var(--text-muted)">${esc(h.code)}</span></td>
+  <td><span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span></td>
   <td>${esc(h.shares.toLocaleString('ja-JP'))}</td>
   <td>${esc(yen(h.avgPrice, 2))}</td>
   <td>${c.price == null ? '—' : esc(yen(c.price, 1))}</td>
@@ -469,14 +583,14 @@
 <table class="holdings-table">
   <thead>
     <tr>
-      <th>銘柄</th><th>株数</th><th>取得単価</th><th>現在値</th><th>取得金額</th><th>評価額</th>
+      <th>銘柄</th><th>口座</th><th>株数</th><th>取得単価</th><th>現在値</th><th>取得金額</th><th>評価額</th>
       <th>評価損益</th><th>損益率</th><th>年間配当</th><th>利回り</th><th>優待/年</th><th></th>
     </tr>
   </thead>
   <tbody>${body}</tbody>
   <tfoot>
     <tr>
-      <td>合計</td><td></td><td></td><td></td>
+      <td>合計</td><td></td><td></td><td></td><td></td>
       <td>${esc(yen(t.cost))}</td>
       <td>${esc(yen(t.value))}</td>
       <td class="${plClass(t.pl)}">${esc(signed(t.pl))}</td>
@@ -558,6 +672,9 @@
 
     el.codeInput.value = h?.code ?? '';
     el.nameInput.value = h?.name ?? '';
+    // 新規追加のときは、いま絞り込んでいる口座を初期値にすると入力が早い
+    el.accountInput.value = h?.account
+      ?? (ACCOUNTS.some((a) => a.value === settings.account) ? settings.account : DEFAULT_ACCOUNT);
     el.priceInput.value = h ? String(h.avgPrice) : '';
     el.sharesInput.value = h ? String(h.shares) : '';
     el.unitInput.value = String(h?.unit ?? 100);
@@ -635,8 +752,13 @@
     if (avgPrice == null || avgPrice < 0) return failHolding(event, '取得単価を正しく入力してください。');
     if (shares == null || shares < 0) return failHolding(event, '取得株数を正しく入力してください。');
 
-    const dup = holdings.find((h) => h.code === code && h.id !== editingId);
-    if (dup) return failHolding(event, `証券コード ${code} はすでに登録されています（買い増しは「買い増し」ボタンから）。`);
+    // 同じ銘柄でも口座が違えば別枠で持てる（特定口座とNISAの併有）。
+    const account = el.accountInput.value;
+    const dup = holdings.find((h) => h.code === code && h.account === account && h.id !== editingId);
+    if (dup) {
+      const label = ACCOUNTS.find((a) => a.value === account)?.label ?? '';
+      return failHolding(event, `証券コード ${code} は${label}にすでに登録されています（買い増しは「買い増し」ボタンから）。`);
+    }
 
     const tiers = readTierRows();
     const yutaiNote = el.yutaiNoteInput.value.trim();
@@ -646,6 +768,7 @@
       ...(base ?? {}),
       id: base?.id,
       code,
+      account,
       name: el.nameInput.value.trim() || presetByCode.get(code)?.name || '',
       avgPrice,
       shares: Math.floor(shares),
@@ -684,7 +807,7 @@
     const h = holdings.find((x) => x.id === id);
     if (!h) return;
     buyTargetId = id;
-    el.buyTargetName.textContent = `${h.name || h.code}（現在 ${h.shares.toLocaleString('ja-JP')}株・平均 ${yen(h.avgPrice, 2)}）`;
+    el.buyTargetName.textContent = `${h.name || h.code}［${accountOf(h).label}］（現在 ${h.shares.toLocaleString('ja-JP')}株・平均 ${yen(h.avgPrice, 2)}）`;
     el.buyShares.value = presetShares != null ? String(presetShares) : String(h.unit || 100);
     el.buyPrice.value = presetPrice != null ? String(Math.round(presetPrice * 10) / 10) : (h.quote?.price != null ? String(h.quote.price) : '');
     updateBuyPreview();
@@ -723,7 +846,7 @@
     const h = holdings.find((x) => x.id === id);
     if (!h) return;
     simTargetId = id;
-    el.simTargetName.textContent = `${h.name || h.code}（現在 ${h.shares.toLocaleString('ja-JP')}株・現在値 ${h.quote?.price != null ? yen(h.quote.price, 1) : '未取得'}）`;
+    el.simTargetName.textContent = `${h.name || h.code}［${accountOf(h).label}］（現在 ${h.shares.toLocaleString('ja-JP')}株・現在値 ${h.quote?.price != null ? yen(h.quote.price, 1) : '未取得'}）`;
 
     const unit = h.unit || 100;
     const next = nextTier(h.yutai, h.shares);
@@ -792,7 +915,7 @@
     ${row('必要な追加資金', '—', yen(addCost), '')}
     ${row('取得金額', yen(before.cost), yen(afterCost), signed(addCost))}
     ${row('平均取得単価', yen(h.avgPrice, 2), yen(newAvg, 2), '')}
-    ${row(`年間配当${settings.afterTax ? '（税引後）' : '（税引前）'}`, yen(before.divShown), yen(after.divShown), divDiff != null ? signed(divDiff) : '', true)}
+    ${row(`年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}`, yen(before.divShown), yen(after.divShown), divDiff != null ? signed(divDiff) : '', true)}
     ${row('優待の価値（年・目安）', yen(before.yutaiValue), yen(after.yutaiValue), signed(after.yutaiValue - before.yutaiValue), after.yutaiValue !== before.yutaiValue)}
     ${row('配当＋優待の合計', yen((before.divShown ?? 0) + before.yutaiValue), yen((after.divShown ?? 0) + after.yutaiValue), signed(((after.divShown ?? 0) + after.yutaiValue) - ((before.divShown ?? 0) + before.yutaiValue)))}
     ${row('総合利回り（取得ベース）', pct(before.totalYield), pct(afterTotalYield), '')}
@@ -819,16 +942,20 @@ ${yutaiLine}
     let ok = 0;
     const failed = [];
 
-    for (const h of targets) {
+    // 同じ銘柄を複数の口座で持っていても、取得は1回で済ませる。
+    const codes = [...new Set(targets.map((h) => h.code))];
+    for (const code of codes) {
       try {
-        const q = await window.Quotes.fetchQuote(h.code);
-        h.quote = q;
-        if (!h.name && q.nameEn) h.name = q.nameEn;
-        if (!h.months.length && q.divMonths?.length) h.months = q.divMonths;
+        const q = await window.Quotes.fetchQuote(code);
+        for (const h of targets.filter((x) => x.code === code)) {
+          h.quote = q;
+          if (!h.name && q.nameEn) h.name = q.nameEn;
+          if (!h.months.length && q.divMonths?.length) h.months = q.divMonths;
+        }
         ok++;
       } catch (err) {
-        console.warn(`${h.code} の取得に失敗`, err);
-        failed.push(h.code);
+        console.warn(`${code} の取得に失敗`, err);
+        failed.push(code);
       }
     }
 
@@ -839,8 +966,8 @@ ${yutaiLine}
 
     if (opts.quiet && !failed.length) return;
     if (failed.length && !ok) toast(`取得に失敗しました（${failed.join('・')}）。時間をおいて試すか、設定で中継先を変更してください。`);
-    else if (failed.length) toast(`${ok}件を更新（失敗：${failed.join('・')}）`);
-    else toast(`${ok}件の株価を更新しました`);
+    else if (failed.length) toast(`${ok}銘柄を更新（失敗：${failed.join('・')}）`);
+    else toast(`${ok}銘柄の株価を更新しました`);
   }
 
   // ---------- 読み書き（JSON） ----------
@@ -869,16 +996,19 @@ ${yutaiLine}
       const rows = Array.isArray(parsed) ? parsed : parsed.holdings;
       if (!Array.isArray(rows)) throw new Error('holdings が見つかりません');
       const incoming = rows.map(normalize);
-      const byCode = new Map(holdings.map((h) => [h.code, h]));
+      // 銘柄コードだけでなく口座も見て突き合わせる（同じ銘柄を別口座で持てるため）
+      const keyOf = (h) => `${h.code}:${h.account}`;
+      const byKey = new Map(holdings.map((h) => [keyOf(h), h]));
       let added = 0, updated = 0;
       for (const h of incoming) {
-        if (byCode.has(h.code)) {
-          const cur = byCode.get(h.code);
+        const key = keyOf(h);
+        if (byKey.has(key)) {
+          const cur = byKey.get(key);
           Object.assign(cur, h, { id: cur.id, createdAt: cur.createdAt });
           updated++;
         } else {
           holdings.push(h);
-          byCode.set(h.code, h);
+          byKey.set(key, h);
           added++;
         }
       }
@@ -895,13 +1025,14 @@ ${yutaiLine}
 
   function addSample() {
     const samples = [
-      { code: '7203', avgPrice: 2450, shares: 200, memo: 'NISA成長投資枠' },
-      { code: '2702', avgPrice: 5600, shares: 100, memo: '優待めあて' },
-      { code: '8058', avgPrice: 2980, shares: 300, memo: '' },
+      { code: '7203', account: 'nisa-growth', avgPrice: 2450, shares: 200, memo: '' },
+      { code: '2702', account: 'tokutei', avgPrice: 5600, shares: 100, memo: '優待めあて' },
+      { code: '8058', account: 'nisa-growth', avgPrice: 2980, shares: 300, memo: '' },
+      { code: '8058', account: 'tokutei', avgPrice: 3450, shares: 100, memo: 'NISA枠を使い切ったぶん' },
     ];
     let added = 0;
     for (const s of samples) {
-      if (holdings.some((h) => h.code === s.code)) continue;
+      if (holdings.some((h) => h.code === s.code && h.account === s.account)) continue;
       const p = presetByCode.get(s.code);
       holdings.push(normalize({
         ...s,
@@ -1022,6 +1153,20 @@ ${yutaiLine}
       saveSettings();
       renderList();
     });
+    el.filterAccount.addEventListener('change', () => {
+      settings.account = el.filterAccount.value;
+      saveSettings();
+      render();
+    });
+    // 口座別サマリーのカードを押したら、その口座に絞り込む（もう一度押すと解除）
+    el.accountGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-account]');
+      if (!card) return;
+      settings.account = settings.account === card.dataset.account ? '' : card.dataset.account;
+      el.filterAccount.value = settings.account;
+      saveSettings();
+      render();
+    });
     el.viewMode.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-view]');
       if (!btn) return;
@@ -1117,6 +1262,7 @@ ${yutaiLine}
     buildCodeOptions();
 
     el.sortBy.value = settings.sort;
+    el.filterAccount.value = settings.account ?? '';
     el.afterTax.checked = !!settings.afterTax;
     for (const b of el.viewMode.querySelectorAll('button')) {
       const on = b.dataset.view === settings.view;

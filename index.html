@@ -50,7 +50,7 @@
 <main class="wrap">
 
   <section class="stats" id="stats" aria-label="ポートフォリオ全体">
-    <div class="stat"><span class="stat-value" id="statValue">—</span><span class="stat-label">評価額</span></div>
+    <div class="stat"><span class="stat-value" id="statValue">—</span><span class="stat-label" id="statValueLabel">評価額</span></div>
     <div class="stat"><span class="stat-value" id="statCost">—</span><span class="stat-label">取得金額</span></div>
     <div class="stat"><span class="stat-value" id="statPl">—</span><span class="stat-label">評価損益</span></div>
     <div class="stat"><span class="stat-value" id="statDiv">—</span><span class="stat-label" id="statDivLabel">年間配当</span></div>
@@ -60,8 +60,30 @@
 
   <p class="updated-line" id="updatedLine" hidden></p>
 
+  <section class="panel panel-tight" id="accountPanel" aria-label="口座別サマリー" hidden>
+    <h2 class="panel-title">口座別のサマリー</h2>
+    <div class="account-grid" id="accountGrid"></div>
+  </section>
+
+  <section class="panel panel-tight" id="nisaPanel" aria-label="NISAの非課税保有限度額" hidden>
+    <h2 class="panel-title">NISA枠の使用状況（簿価＝取得金額ベース）</h2>
+    <div id="nisaGauges"></div>
+    <p class="note">
+      生涯の非課税保有限度額は簿価で1,800万円、うち成長投資枠は1,200万円までです。
+      年間投資枠（成長240万円・つみたて120万円）は購入した年ごとの管理が必要なため、ここには含めていません。
+    </p>
+  </section>
+
   <section class="toolbar" aria-label="表示の設定">
     <input type="search" id="search" class="search" placeholder="銘柄名・コード・メモを検索…" aria-label="検索">
+    <select id="filterAccount" aria-label="口座で絞り込み">
+      <option value="">すべての口座</option>
+      <option value="tokutei">特定口座</option>
+      <option value="nisa">NISA（両枠）</option>
+      <option value="nisa-growth">NISA（成長投資枠）</option>
+      <option value="nisa-tsumitate">NISA（つみたて投資枠）</option>
+      <option value="ippan">一般口座</option>
+    </select>
     <select id="sortBy" aria-label="並び替え">
       <option value="value">評価額が大きい順</option>
       <option value="div">年間配当が多い順</option>
@@ -74,7 +96,7 @@
       <button type="button" data-view="card" class="is-on" aria-pressed="true">カード</button>
       <button type="button" data-view="table" aria-pressed="false">一覧表</button>
     </div>
-    <label class="check"><input type="checkbox" id="afterTax"> 配当を税引後で表示</label>
+    <label class="check"><input type="checkbox" id="afterTax"> 配当を税引後で表示（NISAは非課税）</label>
   </section>
 
   <section id="list" class="list" aria-label="保有銘柄"></section>
@@ -125,6 +147,17 @@
         <input type="text" id="nameInput" autocomplete="off" placeholder="トヨタ自動車">
       </label>
     </div>
+
+    <label class="field">
+      <span>口座</span>
+      <select id="accountInput">
+        <option value="tokutei">特定口座</option>
+        <option value="nisa-growth">NISA（成長投資枠）</option>
+        <option value="nisa-tsumitate">NISA（つみたて投資枠）</option>
+        <option value="ippan">一般口座</option>
+      </select>
+      <small class="hint">同じ銘柄を特定口座とNISAの両方で持っている場合は、口座を分けて2件登録してください。NISAの配当は非課税として計算します。</small>
+    </label>
 
     <div class="row">
       <label class="field">
