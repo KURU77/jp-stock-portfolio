@@ -47,7 +47,7 @@
     calendar: $('#calendar'),
     yutaiPanel: $('#yutaiPanel'),
     yutaiList: $('#yutaiList'),
-    codeOptions: $('#codeOptions'),
+    codeSuggest: $('#codeSuggest'),
     menuBtn: $('#menuBtn'),
     menuList: $('#menuList'),
     refreshBtn: $('#refreshBtn'),
@@ -110,6 +110,65 @@
   const presetByCode = new Map();
   for (const p of (window.STOCK_PRESETS || [])) presetByCode.set(String(p.code), p);
 
+  // ---------- 銘柄マスタ（js/stocks.js） ----------
+
+  /** @type {Array<{code:string,name:string,mk:string,key:string}>} */
+  const master = [];
+  const masterByCode = new Map();
+
+  const MARKET_LABEL = {
+    P: 'プライム', S: 'スタンダード', G: 'グロース',
+    E: 'ETF・ETN', R: 'REIT等', O: '出資証券', X: 'PRO Market',
+  };
+  /** 候補の並び順。現物株を上に、ETF・REIT、PRO Market は後ろに。 */
+  const MARKET_WEIGHT = { P: 0, S: 0, G: 0, O: 1, E: 2, R: 2, X: 3 };
+
+  function initMaster() {
+    for (const line of String(window.STOCK_MASTER_RAW ?? '').split('\n')) {
+      const [code, name, mk] = line.split('\t');
+      if (!code || !name) continue;
+      const item = { code, name, mk: mk || 'X', key: `${code} ${name}`.toLowerCase() };
+      master.push(item);
+      masterByCode.set(code, item);
+    }
+  }
+
+  /** 全角の英数字を半角へ。iPhoneの日本語キーボードだと全角で入ることがある。 */
+  function toHalfWidth(s) {
+    return String(s ?? '')
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/　/g, ' ');
+  }
+
+  const normalizeCode = (s) => toHalfWidth(s).trim().toUpperCase();
+
+  /** 証券コードでも銘柄名でも引ける検索。前方一致を優先して返す。 */
+  function searchMaster(query, limit = 12) {
+    const q = toHalfWidth(query).trim().toLowerCase();
+    if (!q) return [];
+    const hits = [];
+    for (const m of master) {
+      const code = m.code.toLowerCase();
+      let score;
+      if (code === q) score = 0;
+      else if (code.startsWith(q)) score = 1;
+      else if (m.name.toLowerCase().startsWith(q)) score = 2;
+      else if (m.key.includes(q)) score = 3;
+      else continue;
+      hits.push({ m, score });
+    }
+    hits.sort((a, b) =>
+      a.score - b.score ||
+      MARKET_WEIGHT[a.m.mk] - MARKET_WEIGHT[b.m.mk] ||
+      a.m.code.localeCompare(b.m.code));
+    return hits.slice(0, limit).map((h) => h.m);
+  }
+
+  /** マスタ優先で銘柄名を引く（優待プリセットしか無い銘柄はそちらを使う） */
+  function nameOfCode(code) {
+    return masterByCode.get(code)?.name ?? presetByCode.get(code)?.name ?? '';
+  }
+
   // ---------- storage ----------
 
   function defaultSettings() {
@@ -165,7 +224,7 @@
     const h = raw && typeof raw === 'object' ? raw : {};
     return {
       id: typeof h.id === 'string' && h.id ? h.id : newId(),
-      code: String(h.code ?? '').trim().toUpperCase(),
+      code: normalizeCode(h.code),
       name: String(h.name ?? ''),
       // 口座区分。旧データ（口座なし）は特定口座として扱う。
       account: ACCOUNTS.some((a) => a.value === h.account) ? h.account : DEFAULT_ACCOUNT,
@@ -327,6 +386,20 @@
   const pct = (r, digits = 2) => (r == null || !Number.isFinite(r) ? '—' : `${(r * 100).toFixed(digits)}%`);
   const signed = (n) => (n == null || !Number.isFinite(n) ? '—' : `${n > 0 ? '+' : ''}${yen(n)}`);
   const plClass = (n) => (n == null ? '' : n > 0 ? 'up' : n < 0 ? 'down' : '');
+
+  /** これより長い優待テキストは、カードが縦に伸びすぎるので折りたたむ。 */
+  const FOLD_LENGTH = 42;
+
+  /**
+   * 長い文章を details で折りたたむ。短ければそのまま段落として出す。
+   * 株主優待は1行が長くなりがちで、畳まないと画面からはみ出して読めなくなる。
+   */
+  function foldable(summary, text, cls = '') {
+    const t = String(text ?? '').trim();
+    if (!t) return '';
+    if (t.length <= FOLD_LENGTH) return `<p class="${cls}">${esc(t)}</p>`;
+    return `<details class="fold"><summary>${esc(summary)}</summary><p class="${cls}">${esc(t)}</p></details>`;
+  }
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -492,19 +565,33 @@
     const stale = h.quote?.fetchedAt ? relTime(h.quote.fetchedAt) : '未取得';
 
     const yutaiBlock = (() => {
+      const noteText = h.yutai?.note
+        ? `${h.yutai.note}${h.yutai.asOf ? `（参考：${h.yutai.asOf}時点）` : ''}`
+        : '';
+      const note = foldable('条件・注意点を読む', noteText, 'note');
+
       if (h.yutai?.abolished) {
-        return `<p class="yutai-none">優待は廃止されています。${esc(h.yutai.note || '')}</p>`;
+        return `<p class="yutai-none">優待は廃止されています。</p>${note}`;
       }
       if (!h.yutai || !h.yutai.tiers.length) {
         return '<p class="yutai-none">優待は登録されていません（「編集」から追加できます）。</p>';
       }
+
       const now = c.tier
-        ? `<p class="yutai-now"><span class="badge ok">${esc(c.tier.shares)}株以上</span> ${esc(c.tier.text)}${c.tier.value ? ` <span class="badge">年 ${esc(yen(c.tier.value))}相当</span>` : ''}</p>`
+        ? `<p class="badges"><span class="badge ok">${esc(c.tier.shares)}株以上</span>${c.tier.value ? `<span class="badge">年 ${esc(yen(c.tier.value))}相当</span>` : ''}</p>`
+          + foldable('優待の内容を全部見る', c.tier.text, 'yutai-now')
         : '<p class="yutai-none">いまの株数では優待の対象外です。</p>';
-      const next = c.next
-        ? `<p class="yutai-next">あと ${c.next.lack.toLocaleString('ja-JP')}株（${esc(yen(c.next.lack * (c.price ?? h.avgPrice)))}）で「${esc(c.next.text)}」</p>`
-        : '';
-      const note = h.yutai.note ? `<p class="note">${esc(h.yutai.note)}${h.yutai.asOf ? `（参考：${esc(h.yutai.asOf)}時点）` : ''}</p>` : '';
+
+      // 次のランクは、内容が長いときだけ「◯株で次のランク」+折りたたみに分ける。
+      const next = (() => {
+        if (!c.next) return '';
+        const lead = `あと ${c.next.lack.toLocaleString('ja-JP')}株（${yen(c.next.lack * (c.price ?? h.avgPrice))}）で`;
+        return c.next.text.length <= FOLD_LENGTH
+          ? `<p class="yutai-next">${esc(lead)}「${esc(c.next.text)}」</p>`
+          : `<p class="yutai-next">${esc(lead)}次のランクに到達します</p>`
+            + foldable('次のランクの内容を見る', c.next.text, 'note');
+      })();
+
       return now + next + note;
     })();
 
@@ -641,7 +728,7 @@
       return `
 <div class="cal-col">
   <span class="cal-amount">${amount > 0 ? esc(Math.round(amount).toLocaleString('ja-JP')) : ''}</span>
-  <div class="cal-bar ${amount > 0 ? '' : 'empty'}" style="height:${Math.max(h, amount > 0 ? 6 : 3)}px" title="${i + 1}月 ${esc(yen(amount))}"></div>
+  <div class="cal-bar ${amount > 0 ? '' : 'is-empty'}" style="height:${Math.max(h, amount > 0 ? 6 : 3)}px" title="${i + 1}月 ${esc(yen(amount))}"></div>
   <span class="cal-month">${i + 1}</span>
 </div>`;
     }).join('');
@@ -655,10 +742,12 @@
     if (!rows.length) return;
     el.yutaiList.innerHTML = rows.map(({ h, c }) => `
 <li>
-  <span class="y-name">${esc(h.name || h.code)}</span>
-  <span class="badge">${esc(h.shares.toLocaleString('ja-JP'))}株</span>
-  <span class="y-text">${esc(c.tier.text)}</span>
-  <span class="y-value">${c.tier.value ? `年 ${esc(yen(c.tier.value))}相当` : '金額換算なし'}</span>
+  <div class="y-head">
+    <span class="y-name">${esc(h.name || h.code)}</span>
+    <span class="badge">${esc(h.shares.toLocaleString('ja-JP'))}株</span>
+    <span class="y-value">${c.tier.value ? `年 ${esc(yen(c.tier.value))}相当` : '金額換算なし'}</span>
+  </div>
+  ${foldable('内容を全部見る', c.tier.text, 'y-text')}
 </li>`).join('');
   }
 
@@ -669,6 +758,7 @@
     const h = id ? holdings.find((x) => x.id === id) : null;
     el.holdingDialogTitle.textContent = h ? '銘柄を編集' : '銘柄を追加';
     el.holdingError.hidden = true;
+    hideSuggest();
 
     el.codeInput.value = h?.code ?? '';
     el.nameInput.value = h?.name ?? '';
@@ -726,16 +816,18 @@
     )].sort((a, b) => a - b);
   }
 
-  /** 証券コードを入れたときに、プリセットから名前・優待などを補う。 */
+  /** 証券コードを入れたときに、銘柄マスタと優待プリセットから内容を補う。 */
   function applyPreset(force) {
-    const code = el.codeInput.value.trim().toUpperCase();
+    const code = normalizeCode(el.codeInput.value);
+    const name = nameOfCode(code);
     const p = presetByCode.get(code);
-    if (!p) return;
-    if (force || !el.nameInput.value.trim()) el.nameInput.value = p.name;
-    if (force || !el.unitInput.value) el.unitInput.value = String(p.unit ?? 100);
-    if ((force || !el.monthsInput.value.trim()) && p.months) el.monthsInput.value = p.months.join(',');
+    if (!name && !p) return;
+    if (name && (force || !el.nameInput.value.trim())) el.nameInput.value = name;
+    if (p?.unit && (force || !el.unitInput.value)) el.unitInput.value = String(p.unit);
+    if (p?.months && (force || !el.monthsInput.value.trim())) el.monthsInput.value = p.months.join(',');
+    // 優待は自分で書き換えていることがあるので、空のときだけ入れる。
     const hasTiers = el.tierRows.querySelector('.tier-row');
-    if (p.yutai && (force || !hasTiers)) {
+    if (p?.yutai && !hasTiers && !el.yutaiNoteInput.value.trim()) {
       renderTierRows(p.yutai.tiers ?? []);
       el.yutaiNoteInput.value = p.yutai.abolished
         ? `【優待廃止】${p.yutai.note ?? ''}`
@@ -743,8 +835,37 @@
     }
   }
 
+  // ---------- 証券コードの候補表示 ----------
+
+  function showSuggest() {
+    const hits = searchMaster(el.codeInput.value, 12);
+    if (!hits.length) return hideSuggest();
+    el.codeSuggest.innerHTML = hits.map((m) => `
+<li role="option">
+  <button type="button" data-code="${esc(m.code)}">
+    <span class="sg-code">${esc(m.code)}</span>
+    <span class="sg-name">${esc(m.name)}</span>
+    <span class="sg-mk">${esc(MARKET_LABEL[m.mk] ?? '')}</span>
+  </button>
+</li>`).join('');
+    el.codeSuggest.hidden = false;
+  }
+
+  function hideSuggest() {
+    el.codeSuggest.hidden = true;
+    el.codeSuggest.innerHTML = '';
+  }
+
+  /** 候補を選んだとき。コードを確定して、銘柄名などを入れ直す。 */
+  function pickSuggest(code) {
+    el.codeInput.value = code;
+    hideSuggest();
+    applyPreset(true);
+    el.priceInput.focus();
+  }
+
   function submitHolding(event) {
-    const code = el.codeInput.value.trim().toUpperCase();
+    const code = normalizeCode(el.codeInput.value);
     const avgPrice = num(el.priceInput.value);
     const shares = num(el.sharesInput.value);
 
@@ -769,7 +890,7 @@
       id: base?.id,
       code,
       account,
-      name: el.nameInput.value.trim() || presetByCode.get(code)?.name || '',
+      name: el.nameInput.value.trim() || nameOfCode(code),
       avgPrice,
       shares: Math.floor(shares),
       unit: num(el.unitInput.value) ?? 100,
@@ -908,6 +1029,7 @@
     })();
 
     el.simResult.innerHTML = `
+<div class="table-scroll">
 <table class="sim-table">
   <thead><tr><th>項目</th><th>現在</th><th>買い増し後</th><th>差分</th></tr></thead>
   <tbody>
@@ -921,6 +1043,7 @@
     ${row('総合利回り（取得ベース）', pct(before.totalYield), pct(afterTotalYield), '')}
   </tbody>
 </table>
+</div>
 ${yutaiLine}
 <p class="sim-note">追加ぶんは現在値（${h.quote?.price != null ? yen(h.quote.price, 1) : '未取得のため取得単価'}）で買えたものとして計算しています。配当は1株あたり ${before.dps != null ? `${before.dps}円` : '不明'} が続く前提です。</p>`;
   }
@@ -1036,7 +1159,7 @@ ${yutaiLine}
       const p = presetByCode.get(s.code);
       holdings.push(normalize({
         ...s,
-        name: p?.name ?? '',
+        name: nameOfCode(s.code),
         unit: p?.unit ?? 100,
         months: p?.months ?? [],
         yutai: p?.yutai ?? null,
@@ -1187,8 +1310,47 @@ ${yutaiLine}
 
     // 銘柄ダイアログ
     el.holdingForm.addEventListener('submit', submitHolding);
+    // 全角で入力されることがあるので半角へ寄せる（英字は候補を出したあとに大文字化する）。
+    el.codeInput.addEventListener('input', () => {
+      const half = toHalfWidth(el.codeInput.value);
+      if (half !== el.codeInput.value) {
+        const pos = el.codeInput.selectionStart;
+        el.codeInput.value = half;
+        el.codeInput.setSelectionRange(pos, pos);
+      }
+      showSuggest();
+    });
+    el.codeInput.addEventListener('focus', () => { if (el.codeInput.value.trim()) showSuggest(); });
     el.codeInput.addEventListener('change', () => applyPreset(false));
-    el.codeInput.addEventListener('blur', () => applyPreset(false));
+    el.codeInput.addEventListener('blur', () => {
+      // 候補のボタンを押す前に閉じてしまわないよう、少しだけ待つ。
+      setTimeout(() => {
+        hideSuggest();
+        // 「7203」のようにコードだけ入れて確定したときは大文字に揃えて補完する。
+        el.codeInput.value = normalizeCode(el.codeInput.value);
+        applyPreset(false);
+      }, 150);
+    });
+    el.codeSuggest.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-code]');
+      if (btn) pickSuggest(btn.dataset.code);
+    });
+    el.codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !el.codeSuggest.hidden) {
+        e.stopPropagation();
+        hideSuggest();
+      } else if (e.key === 'ArrowDown' && !el.codeSuggest.hidden) {
+        e.preventDefault();
+        el.codeSuggest.querySelector('button')?.focus();
+      }
+    });
+    el.codeSuggest.addEventListener('keydown', (e) => {
+      const buttons = [...el.codeSuggest.querySelectorAll('button')];
+      const i = buttons.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); buttons[Math.min(i + 1, buttons.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); (i <= 0 ? el.codeInput : buttons[i - 1]).focus(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); hideSuggest(); el.codeInput.focus(); }
+    });
     el.addTierBtn.addEventListener('click', () => addTierRow(null));
 
     // 買い増しダイアログ
@@ -1250,16 +1412,16 @@ ${yutaiLine}
 
   // ---------- 起動 ----------
 
-  function buildCodeOptions() {
-    el.codeOptions.innerHTML = (window.STOCK_PRESETS || [])
-      .map((p) => `<option value="${esc(p.code)}">${esc(p.name)}</option>`)
-      .join('');
-  }
-
   function init() {
     load();
     applyTheme(localStorage.getItem(THEME_KEY));
-    buildCodeOptions();
+    initMaster();
+
+    if (master.length && window.STOCK_MASTER_AS_OF) {
+      $('#codeHint').textContent =
+        `東証の全上場銘柄（${master.length.toLocaleString('ja-JP')}件・${window.STOCK_MASTER_AS_OF}時点）から検索できます。`
+        + '数字4桁のコードのほか、186A のような英数字コードや銘柄名（ispace・神島化学 など）でも探せます。';
+    }
 
     el.sortBy.value = settings.sort;
     el.filterAccount.value = settings.account ?? '';

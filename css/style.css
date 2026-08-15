@@ -423,8 +423,9 @@ body {
 
 .yutai-now {
   font-size: .85rem;
-  margin: 0;
+  margin: .3rem 0 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .yutai-next {
@@ -432,9 +433,28 @@ body {
   color: var(--warn);
   margin: .25rem 0 0;
   font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .yutai-none { font-size: .82rem; color: var(--text-muted); margin: 0; }
+
+/* ---------- 長文の折りたたみ ---------- */
+.fold { margin: .3rem 0 0; }
+
+.fold > summary {
+  font-size: .78rem;
+  color: var(--accent);
+  cursor: pointer;
+  list-style-position: inside;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fold > summary:hover { text-decoration: underline; }
+.fold[open] > summary { margin-bottom: .2rem; }
+.fold > p { margin: 0; }
 
 .memo {
   font-size: .8rem;
@@ -608,6 +628,7 @@ body {
   align-items: center;
   gap: .25rem;
   min-width: 0;
+  overflow: hidden;
 }
 
 .cal-amount { font-size: .62rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
@@ -620,25 +641,36 @@ body {
   opacity: .85;
 }
 
-.cal-bar.empty { background: var(--surface-2); }
+/* クラス名は .empty にしないこと（空状態メッセージ用の .empty と衝突して
+   padding が付き、カレンダーの列がはみ出す）。 */
+.cal-bar.is-empty { background: var(--surface-2); }
 .cal-month { font-size: .68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 .yutai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 
+/* 優待の説明は長くなりがちなので、1行に詰め込まず縦に積む。 */
 .yutai-list li {
   display: flex;
-  gap: .6rem;
-  align-items: baseline;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: .2rem;
   background: var(--surface-2);
   border-radius: 9px;
   padding: .5rem .7rem;
   font-size: .85rem;
+  min-width: 0;
 }
 
-.yutai-list .y-name { font-weight: 700; }
-.yutai-list .y-text { flex: 1; min-width: 12rem; }
-.yutai-list .y-value { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.yutai-list .y-head {
+  display: flex;
+  gap: .5rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.yutai-list .y-name { font-weight: 700; overflow-wrap: anywhere; }
+.yutai-list .y-text { margin: 0; overflow-wrap: anywhere; word-break: break-word; }
+.yutai-list .y-value { font-variant-numeric: tabular-nums; color: var(--text-muted); margin-left: auto; }
 
 /* ---------- empty / footer ---------- */
 .empty {
@@ -739,6 +771,64 @@ body {
 
 .hint { margin: .1rem 0 0; font-size: .75rem; color: var(--text-muted); line-height: 1.45; }
 
+.field-label {
+  font-size: .78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.field-label em { font-style: normal; color: var(--danger); font-size: .7rem; margin-left: .2rem; }
+
+/* ---------- 証券コードの候補 ---------- */
+.combo { position: relative; }
+
+.suggest {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  margin: 0;
+  padding: .25rem;
+  list-style: none;
+  max-height: 15rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.suggest button {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  text-align: left;
+  padding: .4rem .5rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.suggest button:hover,
+.suggest button:focus-visible { background: var(--surface-2); outline: none; }
+
+.suggest .sg-code {
+  font-size: .8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  flex: 0 0 3.2rem;
+}
+
+.suggest .sg-name { font-size: .85rem; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.suggest .sg-mk { font-size: .68rem; color: var(--text-muted); white-space: nowrap; }
+
 .form-error {
   margin: 0;
   font-size: .82rem;
@@ -779,9 +869,17 @@ body {
 }
 
 /* ---------- シミュレーション ---------- */
-.sim-controls { display: flex; flex-direction: column; gap: .5rem; }
-.sim-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+.sim-controls { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.sim-controls > * { max-width: 100%; }
+.sim-controls input[type="range"] { width: 100%; min-width: 0; accent-color: var(--accent); }
 .sim-quick { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+/* 狭い画面では表がダイアログの幅を超えるので、この中だけ横スクロールさせる */
+.table-scroll {
+  overflow-x: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
 
 .sim-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .sim-table th, .sim-table td {
@@ -833,8 +931,12 @@ body {
   .stat { padding: .7rem .8rem; }
   .stat-value { font-size: 1.15rem; }
   .list { grid-template-columns: 1fr; }
-  .calendar { gap: .2rem; }
+  .calendar { gap: .15rem; }
   .cal-amount { display: none; }
+  .cal-month { font-size: .6rem; }
+  .sim-table { font-size: .78rem; }
+  .sim-table th, .sim-table td { padding: .4rem .3rem; }
+  .sim-table th:first-child, .sim-table td:first-child { white-space: normal; }
   .kv { grid-template-columns: repeat(2, 1fr); }
   .card-actions .btn { flex: 1 1 30%; }
   .account-grid { grid-template-columns: 1fr; }

@@ -11,6 +11,7 @@
 
 | 機能 | 内容 |
 | --- | --- |
+| 銘柄の検索 | 東証の全上場銘柄（4,444件）から、コードでも銘柄名でも検索できます。`186A`（アストロスケール）のような英数字コード、`ispace`・`神島化学` のような社名にも対応 |
 | 口座で分けて管理 | 特定口座・NISA（成長投資枠／つみたて投資枠）・一般口座を区別。口座ごとの評価額・損益・配当を並べて確認でき、NISA の配当は非課税として計算します |
 | 株価の取得 | 証券コードを入れて「株価を更新」。現在値・前日比・52週高安・配当実績を取得します |
 | 取得単価と株数の記録 | 銘柄ごとに平均取得単価と株数を保存。買い増しすると平均取得単価を自動で再計算します |
@@ -41,6 +42,10 @@
 
 ## データの出どころと注意点
 
+* **銘柄マスタ**：JPXが公開している[東証上場銘柄一覧](https://www.jpx.co.jp/markets/statistics-equities/misc/index.html)（data_j.xls）から生成した `js/stocks.js`。
+  2026年7月31日時点で **4,444銘柄**（プライム1,558・スタンダード1,559・グロース596・ETF/ETN476・REIT等63・PRO Market185・ほか）を収録しています。
+  証券コードは4桁の数字だけでなく `186A` のような英数字にも対応。JPXの原本は銘柄名が全角（`ｉｓｐａｃｅ`）なので、半角に直して収録しています。
+  新規上場・社名変更に追随するには `node tools/build-stock-master.mjs` を実行してください（`npm install xlsx` が必要）。
 * **株価・配当**：Yahoo Finance のチャートAPI。ブラウザから直接は CORS で叩けないため、
   公開の中継サービス（r.jina.ai → allorigins → codetabs の順にフォールバック）を経由します。
   送信されるのは**証券コードだけ**で、保有株数や取得単価は送信されません。
@@ -69,20 +74,26 @@ iPhone 16 Pro Max などのフルスクリーン端末を想定して、次の�
 ```
 index.html                アプリ本体
 privacy.html              プライバシーと外部通信の説明
-css/style.css             見た目
-js/presets.js             銘柄マスタ（社名・単元株数・優待の参考データ）
-js/quotes.js              株価・配当の取得（中継サービスのフォールバックつき）
-js/app.js                 状態管理・計算・描画
-sw.js                     Service Worker（オフライン対応）
-manifest.webmanifest      PWA の設定
-assets/                   アイコン
-tools/generate-icons.mjs  アイコンの生成（依存パッケージなし）
+css/style.css                 見た目
+js/stocks.js                  東証の全上場銘柄（コード・銘柄名・市場）
+js/presets.js                 株主優待の参考データ
+js/quotes.js                  株価・配当の取得（中継サービスのフォールバックつき）
+js/app.js                     状態管理・計算・描画
+sw.js                         Service Worker（オフライン対応）
+manifest.webmanifest          PWA の設定
+assets/                       アイコン
+tools/generate-icons.mjs      アイコンの生成（依存パッケージなし）
+tools/build-stock-master.mjs  銘柄マスタの生成（要 npm install xlsx）
 ```
 
-アイコンを作り直すときは次を実行します。
+アイコンや銘柄マスタを作り直すときは次を実行します。
 
 ```bash
 node tools/generate-icons.mjs
+```
+
+```bash
+npm install xlsx && node tools/build-stock-master.mjs
 ```
 
 ## 計算式

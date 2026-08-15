@@ -128,8 +128,6 @@
   </div>
 </footer>
 
-<datalist id="codeOptions"></datalist>
-
 <!-- ---------- 銘柄の追加・編集 ---------- -->
 <dialog id="holdingDialog" class="dialog">
   <form id="holdingForm" method="dialog">
@@ -137,16 +135,23 @@
          フォーカスが移ってキーボードが立ち上がるのを防いでいる（以下同じ）。 -->
     <h2 id="holdingDialogTitle" class="dialog-title" tabindex="-1" autofocus>銘柄を追加</h2>
 
-    <div class="row">
-      <label class="field field-sm">
-        <span>証券コード<em>必須</em></span>
-        <input type="text" id="codeInput" list="codeOptions" inputmode="numeric" autocomplete="off" placeholder="7203" required>
-      </label>
-      <label class="field">
-        <span>銘柄名</span>
-        <input type="text" id="nameInput" autocomplete="off" placeholder="トヨタ自動車">
-      </label>
+    <!-- 2024年以降に上場した銘柄は「186A」のような英数字コードなので、
+         数字キーボード（inputmode="numeric"）にしてはいけない。 -->
+    <div class="field">
+      <label class="field-label" for="codeInput">証券コード / 銘柄名で検索<em>必須</em></label>
+      <div class="combo">
+        <input type="text" id="codeInput" inputmode="text" autocomplete="off"
+               autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="24"
+               placeholder="7203 / 186A / ispace / 神島化学" required>
+        <ul class="suggest" id="codeSuggest" role="listbox" hidden></ul>
+      </div>
+      <small class="hint" id="codeHint">東証の全上場銘柄から検索できます。数字4桁のコードのほか、186A のような英数字コードや銘柄名でも探せます。</small>
     </div>
+
+    <label class="field">
+      <span>銘柄名</span>
+      <input type="text" id="nameInput" autocomplete="off" placeholder="トヨタ自動車">
+    </label>
 
     <label class="field">
       <span>口座</span>
@@ -302,6 +307,7 @@
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+<script src="js/stocks.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/quotes.js"></script>
 <script src="js/app.js"></script>
