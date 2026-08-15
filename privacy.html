@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>プライバシーについて｜日本株ポートフォリオ</title>
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">📈</span> プライバシーについて</h1>
+    <div class="header-actions">
+      <a class="btn" href="./">アプリに戻る</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel">
+    <h2 class="panel-title">保存されるデータ</h2>
+    <p class="dialog-text">
+      銘柄・取得単価・保有株数・メモ・優待の設定は、すべてお使いのブラウザの
+      <strong>localStorage</strong> に保存されます。開発者を含む第三者のサーバーには送信されず、
+      アカウント登録もありません。ブラウザのデータを削除すると、保存内容も消えます。
+      バックアップはメニューの「JSONで書き出し」をお使いください。
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">外部への通信</h2>
+    <p class="dialog-text">
+      「株価を更新」を押したときだけ、外部へ通信します。
+    </p>
+    <ul class="dialog-list">
+      <li>取得先：Yahoo Finance のチャートAPI（株価・配当実績）</li>
+      <li>経由：CORS を通すための公開中継サービス（allorigins / r.jina.ai / codetabs のいずれか）</li>
+      <li>送信される情報：<strong>証券コードのみ</strong>。保有株数・取得単価・メモは送信されません</li>
+      <li>初回は確認ダイアログを表示し、同意しない限り通信しません</li>
+      <li>中継サービスは「設定」から自分のものに変更できます</li>
+    </ul>
+    <p class="note">
+      中継サービスや取得先には、通信元のIPアドレスなど一般的なアクセス情報が記録される可能性があります。
+      気になる場合は株価取得を使わず、取得単価と株数だけの記録アプリとしてもお使いいただけます。
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">アクセス解析・広告</h2>
+    <p class="dialog-text">アクセス解析ツール、広告、Cookie による追跡は一切使用していません。</p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">免責</h2>
+    <p class="dialog-text">
+      表示される株価・配当・株主優待はいずれも参考値です。遅延・欠損・誤りが含まれることがあります。
+      とくに株主優待は内容の変更・廃止が頻繁にあるため、必ず各社のIR情報でご確認ください。
+      本アプリは投資助言を行うものではなく、利用によって生じた損害について責任を負いません。
+    </p>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap"><p class="note">日本株ポートフォリオ</p></div>
+</footer>
+
+<script>
+  // アプリ側で選んだテーマをこのページにも反映する
+  const t = localStorage.getItem('jp-stock-portfolio.theme');
+  document.documentElement.dataset.theme =
+    t === 'dark' || t === 'light' ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+</script>
+</body>
+</html>

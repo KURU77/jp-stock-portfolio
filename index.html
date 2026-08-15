@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover: iPhone のノッチ／ホームインジケータ領域まで背景を敷き、
+     余白は CSS の env(safe-area-inset-*) で確保する。
+     入力欄のフォントは 16px 以上にしてあるので、フォーカス時の自動ズームは起きない。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日本株ポートフォリオ</title>
+<meta name="description" content="保有している日本株の取得単価・株数を記録し、株価を取得して評価損益・年間配当・株主優待をまとめて確認できるアプリ。買い増しシミュレーションつき。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<!-- ホーム画面に追加したときの見え方 -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="日本株ポートフォリオ">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">📈</span> 日本株ポートフォリオ</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <div class="menu">
+        <button type="button" id="menuBtn" class="icon-btn" title="メニュー" aria-label="メニュー" aria-haspopup="true" aria-expanded="false">⋯</button>
+        <div class="menu-list" id="menuList" role="menu" hidden>
+          <button type="button" id="settingsBtn" role="menuitem">設定</button>
+          <button type="button" id="exportBtn" role="menuitem">JSONで書き出し</button>
+          <button type="button" id="importBtn" role="menuitem">JSONを読み込み</button>
+          <button type="button" id="sampleBtn" role="menuitem">サンプルデータを追加</button>
+          <button type="button" id="clearBtn" role="menuitem" class="danger">すべて削除</button>
+        </div>
+      </div>
+      <button type="button" id="refreshBtn" class="btn">株価を更新</button>
+      <button type="button" id="addBtn" class="btn btn-primary">＋ 銘柄を追加</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="stats" id="stats" aria-label="ポートフォリオ全体">
+    <div class="stat"><span class="stat-value" id="statValue">—</span><span class="stat-label">評価額</span></div>
+    <div class="stat"><span class="stat-value" id="statCost">—</span><span class="stat-label">取得金額</span></div>
+    <div class="stat"><span class="stat-value" id="statPl">—</span><span class="stat-label">評価損益</span></div>
+    <div class="stat"><span class="stat-value" id="statDiv">—</span><span class="stat-label" id="statDivLabel">年間配当</span></div>
+    <div class="stat"><span class="stat-value" id="statYutai">—</span><span class="stat-label">優待（年・目安）</span></div>
+    <div class="stat"><span class="stat-value" id="statYield">—</span><span class="stat-label">総合利回り（取得ベース）</span></div>
+  </section>
+
+  <p class="updated-line" id="updatedLine" hidden></p>
+
+  <section class="toolbar" aria-label="表示の設定">
+    <input type="search" id="search" class="search" placeholder="銘柄名・コード・メモを検索…" aria-label="検索">
+    <select id="sortBy" aria-label="並び替え">
+      <option value="value">評価額が大きい順</option>
+      <option value="div">年間配当が多い順</option>
+      <option value="yield">配当利回りが高い順</option>
+      <option value="pl">評価損益率が高い順</option>
+      <option value="code">証券コード順</option>
+      <option value="created">追加が新しい順</option>
+    </select>
+    <div class="segmented" id="viewMode" role="group" aria-label="表示のしかた">
+      <button type="button" data-view="card" class="is-on" aria-pressed="true">カード</button>
+      <button type="button" data-view="table" aria-pressed="false">一覧表</button>
+    </div>
+    <label class="check"><input type="checkbox" id="afterTax"> 配当を税引後で表示</label>
+  </section>
+
+  <section id="list" class="list" aria-label="保有銘柄"></section>
+
+  <p class="empty" id="empty" hidden>
+    まだ銘柄が登録されていません。<br>
+    右上の「＋ 銘柄を追加」から、証券コード・取得単価・株数を入力してください。
+  </p>
+
+  <section class="panel" id="calendarPanel" aria-label="配当スケジュール" hidden>
+    <h2 class="panel-title">配当の受け取り月（権利確定月ベース・目安）</h2>
+    <div class="calendar" id="calendar"></div>
+    <p class="note">直近1年の権利落ち日から推計しています。実際の入金は権利確定の2〜3か月後になることが多いです。</p>
+  </section>
+
+  <section class="panel" id="yutaiPanel" aria-label="優待一覧" hidden>
+    <h2 class="panel-title">いま受け取れる株主優待</h2>
+    <ul class="yutai-list" id="yutaiList"></ul>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      データはこの端末のブラウザ内（localStorage）だけに保存されます。株価・配当は外部サービスから取得した参考値、
+      株主優待は編集可能な参考データです。投資判断は必ず各社IR・証券会社の情報でご確認ください。本アプリは投資助言ではありません。
+    </p>
+  </div>
+</footer>
+
+<datalist id="codeOptions"></datalist>
+
+<!-- ---------- 銘柄の追加・編集 ---------- -->
+<dialog id="holdingDialog" class="dialog">
+  <form id="holdingForm" method="dialog">
+    <!-- autofocus を見出しに置くことで、ダイアログを開いた瞬間に入力欄へ
+         フォーカスが移ってキーボードが立ち上がるのを防いでいる（以下同じ）。 -->
+    <h2 id="holdingDialogTitle" class="dialog-title" tabindex="-1" autofocus>銘柄を追加</h2>
+
+    <div class="row">
+      <label class="field field-sm">
+        <span>証券コード<em>必須</em></span>
+        <input type="text" id="codeInput" list="codeOptions" inputmode="numeric" autocomplete="off" placeholder="7203" required>
+      </label>
+      <label class="field">
+        <span>銘柄名</span>
+        <input type="text" id="nameInput" autocomplete="off" placeholder="トヨタ自動車">
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="field">
+        <span>取得単価（円）<em>必須</em></span>
+        <input type="number" id="priceInput" min="0" step="0.01" inputmode="decimal" required>
+      </label>
+      <label class="field">
+        <span>取得株数<em>必須</em></span>
+        <input type="number" id="sharesInput" min="0" step="1" inputmode="numeric" required>
+      </label>
+      <label class="field field-sm">
+        <span>単元株数</span>
+        <input type="number" id="unitInput" min="1" step="1" inputmode="numeric" value="100">
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="field">
+        <span>1株あたり年間配当（円）</span>
+        <input type="number" id="divInput" min="0" step="0.01" inputmode="decimal" placeholder="空欄なら取得した実績値を使用">
+      </label>
+      <label class="field field-sm">
+        <span>権利確定月</span>
+        <input type="text" id="monthsInput" autocomplete="off" placeholder="3,9">
+      </label>
+    </div>
+
+    <fieldset class="fieldset">
+      <legend>株主優待</legend>
+      <p class="note">保有株数の段（ランク）ごとに登録します。「年間の価値」は自分の感覚で構いません（割引券などは0でOK）。</p>
+      <div id="tierRows" class="tier-rows"></div>
+      <button type="button" id="addTierBtn" class="btn btn-sm">＋ 優待の段を追加</button>
+      <label class="field">
+        <span>優待メモ（条件・注意点）</span>
+        <input type="text" id="yutaiNoteInput" autocomplete="off" placeholder="1年以上の継続保有が条件 など">
+      </label>
+    </fieldset>
+
+    <label class="field">
+      <span>メモ</span>
+      <input type="text" id="memoInput" autocomplete="off" placeholder="NISA成長投資枠で購入 など">
+    </label>
+
+    <p class="form-error" id="holdingError" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 買い増し ---------- -->
+<dialog id="buyDialog" class="dialog">
+  <form id="buyForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>買い増しを記録</h2>
+    <p class="dialog-sub" id="buyTargetName"></p>
+    <div class="row">
+      <label class="field">
+        <span>追加する株数<em>必須</em></span>
+        <input type="number" id="buyShares" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <label class="field">
+        <span>約定単価（円）<em>必須</em></span>
+        <input type="number" id="buyPrice" min="0" step="0.01" inputmode="decimal" required>
+      </label>
+    </div>
+    <p class="hint" id="buyPreview"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">平均取得単価を更新</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- シミュレーション ---------- -->
+<dialog id="simDialog" class="dialog dialog-wide">
+  <form id="simForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>買い増しシミュレーション</h2>
+    <p class="dialog-sub" id="simTargetName"></p>
+
+    <div class="sim-controls">
+      <label class="field field-sm">
+        <span>追加する株数</span>
+        <input type="number" id="simAdd" min="0" step="1" inputmode="numeric" value="100">
+      </label>
+      <input type="range" id="simRange" min="0" max="1000" step="100" value="100" aria-label="追加する株数">
+      <div class="sim-quick" id="simQuick"></div>
+    </div>
+
+    <div class="sim-result" id="simResult"></div>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="simApplyBtn">この株数で買い増しを記録</button>
+      <button type="submit" class="btn btn-primary">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 通信の確認（初回のみ） ---------- -->
+<dialog id="netDialog" class="dialog">
+  <form method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>株価の取得について</h2>
+    <p class="dialog-text">
+      株価と配当実績は <strong>Yahoo Finance</strong> のデータを、CORS を通すための
+      <strong>公開の中継サービス</strong>（allorigins など）経由で取得します。
+    </p>
+    <ul class="dialog-list">
+      <li>送信されるのは<strong>証券コードだけ</strong>です。保有株数・取得単価・メモは送信されません。</li>
+      <li>取得した値は遅延・欠損することがあります。参考値としてお使いください。</li>
+      <li>中継先は「設定」から自分のものに変更できます。</li>
+    </ul>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>取得しない</button>
+      <button type="button" class="btn btn-primary" id="netAgreeBtn">同意して取得する</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 設定 ---------- -->
+<dialog id="settingsDialog" class="dialog">
+  <form id="settingsForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>設定</h2>
+    <label class="field">
+      <span>配当の税率（%）</span>
+      <input type="number" id="taxRateInput" min="0" max="100" step="0.001" inputmode="decimal">
+      <small class="hint">既定は20.315%（所得税15.315% + 住民税5%）。NISAなら0にしてください。</small>
+    </label>
+    <label class="field">
+      <span>中継サービスのURL（上級者向け・任意）</span>
+      <input type="text" id="relayInput" autocomplete="off" placeholder="https://example.com/proxy?url={url}">
+      <small class="hint">{url} の部分が取得先URL（URLエンコード済み）に置き換わります。空欄なら既定の中継を使います。</small>
+    </label>
+    <label class="check"><input type="checkbox" id="autoRefreshInput"> アプリを開いたときに株価を自動更新する</label>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/presets.js"></script>
+<script src="js/quotes.js"></script>
+<script src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>

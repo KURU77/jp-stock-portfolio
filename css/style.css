@@ -1,0 +1,773 @@
+/* 日本株ポートフォリオ — 配色や部品の作りは同シリーズの他アプリと揃えています。 */
+:root {
+  color-scheme: light;
+  --bg: #fdfdff;
+  --surface: #ffffff;
+  --surface-2: #f4f6fa;
+  --border: #e6e9f0;
+  --text: #1b1f27;
+  --text-muted: #6b7280;
+  --accent: #3b6ef0;
+  --accent-weak: #e8eefe;
+  --accent-text: #ffffff;
+  --danger: #d64545;
+  --danger-weak: #fdecec;
+  --ok: #14875a;
+  --ok-weak: #e3f4ec;
+  --warn: #b7791f;
+  --warn-weak: #fdf2dc;
+  /* 日本の株価表示にならい、上げ＝赤 / 下げ＝緑（青）とする */
+  --up: #d64545;
+  --down: #1f7a53;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 6px 20px rgba(16, 24, 40, .05);
+  --radius: 12px;
+  /* iOS Safari は 16px 未満の入力欄にフォーカスすると自動でズームするため、
+     フォームコントロールはこの値を下回らないようにする。 */
+  --input-font-size: 16px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14161b;
+  --surface: #1c1f26;
+  --surface-2: #23272f;
+  --border: #2f343d;
+  --text: #e8eaee;
+  --text-muted: #99a1ae;
+  --accent: #6c94ff;
+  --accent-weak: #212a44;
+  --accent-text: #10131a;
+  --danger: #ef7373;
+  --danger-weak: #3a2326;
+  --ok: #4cc38a;
+  --ok-weak: #1c3129;
+  --warn: #e0b055;
+  --warn-weak: #352d19;
+  --up: #f47272;
+  --down: #4cc38a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .3);
+}
+
+* { box-sizing: border-box; }
+
+/* display 指定が hidden 属性を上書きしてしまうため、hidden を常に優先させる。 */
+[hidden] { display: none !important; }
+
+/* iPhone（ホーム画面から起動したとき）向けの土台。
+   ・overscroll-behavior: 端まで来たときのバウンド／引っ張って更新を止める
+   ・overflow-x: clip: 横方向のはみ出しを切る。clip はスクロール領域を作らないので
+     position: sticky のヘッダーがそのまま効く（hidden だと効かなくなる）
+   ・touch-action: pan-y pinch-zoom: 縦スクロールとピンチ拡大だけ許可し、
+     横・斜めのスワイプで画面が横に揺れるのを止める */
+html {
+  overscroll-behavior: none;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  overflow-x: clip;
+  touch-action: pan-y pinch-zoom;
+  -webkit-tap-highlight-color: transparent;
+  /* 横向き時のノッチ側の余白 */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.wrap {
+  width: min(1080px, 100% - 2rem);
+  margin-inline: auto;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- header ---------- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  /* ステータスバー（ノッチ）に潜り込まないぶんの余白 */
+  padding-top: env(safe-area-inset-top);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 60px;
+  flex-wrap: wrap;
+  padding-block: .5rem;
+}
+
+.logo {
+  font-size: 1.05rem;
+  margin: 0;
+  margin-right: auto;
+  letter-spacing: .01em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* ---------- buttons ---------- */
+.btn {
+  font: inherit;
+  font-size: .875rem;
+  padding: .5rem .9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+  /* ダブルタップ拡大と長押しの選択メニューを抑える */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: .55; cursor: progress; }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.btn-primary:hover { filter: brightness(1.06); background: var(--accent); }
+.btn-sm { font-size: .8rem; padding: .3rem .6rem; }
+
+.icon-btn {
+  font: inherit;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.icon-btn:hover { background: var(--surface-2); }
+
+/* ---------- menu ---------- */
+.menu { position: relative; }
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: .3rem;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+.menu-list button {
+  font: inherit;
+  font-size: .875rem;
+  text-align: left;
+  padding: .5rem .65rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menu-list button:hover { background: var(--surface-2); }
+.menu-list .danger { color: var(--danger); }
+
+/* ---------- stats ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .75rem;
+  margin: 1.5rem 0 .5rem;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stat-value .sub { font-size: .8rem; font-weight: 600; margin-left: .35rem; }
+.stat-label { font-size: .75rem; color: var(--text-muted); }
+
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+.updated-line {
+  margin: 0 0 1rem;
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+
+/* ---------- toolbar ---------- */
+.toolbar {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.toolbar .search { flex: 1 1 240px; min-width: 0; }
+
+.toolbar input[type="search"],
+.toolbar select {
+  font: inherit;
+  font-size: var(--input-font-size);
+  padding: .5rem .7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .82rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* ---------- セグメント切り替え ---------- */
+.segmented {
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmented button {
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  padding: .35rem .8rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.segmented button:hover { color: var(--text); }
+
+.segmented button.is-on {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
+}
+
+/* ---------- 保有銘柄カード ---------- */
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+}
+
+.card-top { display: flex; align-items: start; gap: .6rem; }
+
+.card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.card-code {
+  display: block;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.price-box { text-align: right; white-space: nowrap; }
+
+.price-now {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  line-height: 1.2;
+}
+
+.price-chg { font-size: .75rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.price-stale { font-size: .7rem; color: var(--text-muted); display: block; }
+
+.kv {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem .6rem;
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: .6rem .7rem;
+}
+
+.kv > div { min-width: 0; }
+.kv dt, .kv .k { font-size: .68rem; color: var(--text-muted); margin: 0; }
+.kv dd, .kv .v {
+  margin: 0;
+  font-size: .92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.section-mini {
+  border-top: 1px solid var(--border);
+  padding-top: .6rem;
+}
+
+.mini-title {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin: 0 0 .35rem;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.dividend-line {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.dividend-amount {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badges { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+.badge {
+  font-size: .7rem;
+  font-weight: 600;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.badge.ok { background: var(--ok-weak); color: var(--ok); }
+.badge.accent { background: var(--accent-weak); color: var(--accent); }
+.badge.warn { background: var(--warn-weak); color: var(--warn); }
+.badge.danger { background: var(--danger-weak); color: var(--danger); }
+
+.yutai-now {
+  font-size: .85rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.yutai-next {
+  font-size: .78rem;
+  color: var(--warn);
+  margin: .25rem 0 0;
+  font-weight: 600;
+}
+
+.yutai-none { font-size: .82rem; color: var(--text-muted); margin: 0; }
+
+.memo {
+  font-size: .8rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: .45rem .6rem;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: .25rem;
+}
+
+.card-actions .btn { font-size: .78rem; padding: .3rem .6rem; }
+.card-actions .btn.link-danger { color: var(--danger); }
+
+/* ---------- 一覧表モード ---------- */
+.list.table-view {
+  display: block;
+  overflow-x: auto;
+  /* body で横方向のパンを止めているので、この中だけ横スワイプを許可する */
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.holdings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+  white-space: nowrap;
+}
+
+.holdings-table th,
+.holdings-table td {
+  padding: .55rem .7rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.holdings-table th {
+  font-size: .72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.holdings-table th:first-child,
+.holdings-table td:first-child { text-align: left; white-space: normal; min-width: 11rem; }
+.holdings-table tbody tr:hover { background: var(--surface-2); }
+.holdings-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: 0; }
+.holdings-table .row-btn {
+  font: inherit;
+  font-size: .78rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: .15rem .5rem;
+  cursor: pointer;
+}
+
+/* ---------- パネル（配当カレンダー・優待一覧） ---------- */
+.panel {
+  margin-top: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem 1.2rem;
+}
+
+.panel-title { margin: 0 0 .8rem; font-size: .95rem; }
+
+.calendar {
+  display: grid;
+  /* minmax(0, 1fr) にしないと、中身の最小幅で12列が画面からはみ出す */
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: .35rem;
+  align-items: end;
+  min-height: 130px;
+}
+
+.cal-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .25rem;
+  min-width: 0;
+}
+
+.cal-amount { font-size: .62rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.cal-bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: 5px 5px 0 0;
+  background: var(--accent);
+  opacity: .85;
+}
+
+.cal-bar.empty { background: var(--surface-2); }
+.cal-month { font-size: .68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.yutai-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.yutai-list li {
+  display: flex;
+  gap: .6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: .5rem .7rem;
+  font-size: .85rem;
+}
+
+.yutai-list .y-name { font-weight: 700; }
+.yutai-list .y-text { flex: 1; min-width: 12rem; }
+.yutai-list .y-value { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+/* ---------- empty / footer ---------- */
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem 1rem;
+  font-size: .9rem;
+}
+
+.note { font-size: .75rem; color: var(--text-muted); line-height: 1.6; margin: .6rem 0 0; }
+
+.site-footer {
+  margin: 3rem auto 2rem;
+  /* ホームインジケータに文字がかからないようにする */
+  padding-bottom: env(safe-area-inset-bottom);
+  font-size: .75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ---------- dialog ---------- */
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  width: min(560px, calc(100% - 2rem));
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+  box-shadow: var(--shadow);
+  /* ダイアログの中は縦スクロールのみ。背面のページには伝播させない */
+  overscroll-behavior: contain;
+}
+
+.dialog-wide { width: min(700px, calc(100% - 2rem)); }
+.dialog::backdrop { background: rgba(0, 0, 0, .45); }
+
+.dialog form {
+  padding: 1.25rem;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* autofocus を当てている見出し。フォーカスリングは出さない（キーボード対策のための便宜的なフォーカス） */
+.dialog-title:focus { outline: none; }
+
+.dialog-title { margin: 0; font-size: 1.1rem; }
+.dialog-sub { margin: -.5rem 0 0; font-size: .85rem; color: var(--text-muted); }
+.dialog-text { margin: 0; font-size: .88rem; }
+.dialog-list { margin: 0; padding-left: 1.2rem; font-size: .82rem; color: var(--text-muted); }
+.dialog-list li { margin-bottom: .25rem; }
+
+.row { display: flex; gap: .6rem; flex-wrap: wrap; }
+
+.field { display: flex; flex-direction: column; gap: .25rem; flex: 1 1 12rem; min-width: 0; }
+.field-sm { flex: 0 1 8rem; }
+
+.field > span {
+  font-size: .78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.field > span em {
+  font-style: normal;
+  color: var(--danger);
+  font-size: .7rem;
+  margin-left: .2rem;
+}
+
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  font-size: var(--input-font-size);
+  padding: .5rem .65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+}
+
+.field input:focus-visible,
+.field select:focus-visible,
+.toolbar input:focus-visible,
+.toolbar select:focus-visible,
+.btn:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.hint { margin: .1rem 0 0; font-size: .75rem; color: var(--text-muted); line-height: 1.45; }
+
+.form-error {
+  margin: 0;
+  font-size: .82rem;
+  color: var(--danger);
+  background: var(--danger-weak);
+  border-radius: 8px;
+  padding: .45rem .6rem;
+}
+
+.fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.fieldset legend { font-size: .78rem; font-weight: 700; color: var(--text-muted); padding: 0 .3rem; }
+
+.tier-rows { display: flex; flex-direction: column; gap: .45rem; }
+
+.tier-row { display: flex; gap: .4rem; align-items: center; }
+.tier-row input { font: inherit; font-size: var(--input-font-size); padding: .4rem .5rem; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); min-width: 0; }
+.tier-row .t-shares { width: 5.5rem; text-align: right; }
+.tier-row .t-text { flex: 1; }
+.tier-row .t-value { width: 6.5rem; text-align: right; }
+.tier-row .t-del { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; padding: .1rem .35rem; line-height: 1; }
+.tier-row .t-del:hover { color: var(--danger); }
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  flex-wrap: wrap;
+  padding-top: .25rem;
+}
+
+/* ---------- シミュレーション ---------- */
+.sim-controls { display: flex; flex-direction: column; gap: .5rem; }
+.sim-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
+.sim-quick { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+.sim-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.sim-table th, .sim-table td {
+  padding: .45rem .5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sim-table th { font-size: .72rem; color: var(--text-muted); font-weight: 600; }
+.sim-table th:first-child, .sim-table td:first-child { text-align: left; white-space: nowrap; }
+.sim-table .diff { font-weight: 700; }
+.sim-table tr.highlight td { background: var(--accent-weak); }
+
+.sim-yutai {
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: .6rem .7rem;
+  font-size: .85rem;
+  margin: .75rem 0 0;
+}
+
+.sim-yutai .arrow { color: var(--text-muted); margin: 0 .35rem; }
+.sim-note { font-size: .75rem; color: var(--text-muted); margin: .5rem 0 0; }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  font-size: .85rem;
+  padding: .55rem 1rem;
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  max-width: min(90vw, 30rem);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .wrap { width: min(1080px, 100% - 1.5rem); }
+  .logo { font-size: .95rem; flex: 1 1 100%; margin-right: 0; }
+  .header-inner { gap: .5rem; min-height: 52px; }
+  .header-actions { gap: .35rem; width: 100%; }
+  .header-actions .btn { flex: 1; padding: .45rem .5rem; font-size: .82rem; text-align: center; }
+  .stats { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+  .stat { padding: .7rem .8rem; }
+  .stat-value { font-size: 1.15rem; }
+  .list { grid-template-columns: 1fr; }
+  .calendar { gap: .2rem; }
+  .cal-amount { display: none; }
+  .kv { grid-template-columns: repeat(2, 1fr); }
+  .card-actions .btn { flex: 1 1 30%; }
+}
+
+/* ホーム画面から起動したとき（ブラウザのUIが無い状態） */
+@media (display-mode: standalone) {
+  /* Safari のツールバーが無いぶん、最下部に少し余白を足す */
+  .site-footer { margin-bottom: calc(2rem + env(safe-area-inset-bottom)); }
+}
