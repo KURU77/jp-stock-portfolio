@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>夜間PTS・場中の値動き｜日本株ポートフォリオ</title>
+<meta name="description" content="保有している日本株の、東証ザラ場（前場・後場）の動きと夜間PTSの値動きをまとめて確認するページ。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="夜間PTS">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">🌙</span> 夜間PTS・場中の動き</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <a class="btn" href="./">← ポートフォリオ</a>
+      <button type="button" id="refreshBtn" class="btn btn-primary">値動きを取得</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="session-bar" id="sessionBar" aria-label="いまのセッション">
+    <div class="session-now">
+      <span class="session-badge" id="sessionBadge">—</span>
+      <span class="session-clock num" id="sessionClock">--:--:--</span>
+    </div>
+    <p class="session-next" id="sessionNext"></p>
+    <div class="session-track" id="sessionTrack" aria-hidden="true"></div>
+  </section>
+
+  <section class="stats" aria-label="サマリー">
+    <div class="stat">
+      <span class="stat-value" id="statDay">—</span>
+      <span class="stat-label">本日の東証（前日終値比）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statAfternoon">—</span>
+      <span class="stat-label">後場の動き（前引比）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statPts">—</span>
+      <span class="stat-label" id="statPtsLabel">夜間PTS（東証終値比）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statTotal">—</span>
+      <span class="stat-label">評価額（PTS反映後）</span>
+    </div>
+  </section>
+
+  <p class="updated-line" id="updatedLine" hidden></p>
+
+  <section class="toolbar" aria-label="表示の設定">
+    <select id="sortBy" aria-label="並び替え">
+      <option value="move">動きが大きい順</option>
+      <option value="pts">PTS変化率が大きい順</option>
+      <option value="value">評価額が大きい順</option>
+      <option value="code">証券コード順</option>
+    </select>
+    <label class="check"><input type="checkbox" id="onlyPts"> PTSを入力した銘柄だけ表示</label>
+    <button type="button" id="clearPtsBtn" class="btn btn-sm">PTS入力をすべて消す</button>
+  </section>
+
+  <section id="nightList" class="list" aria-label="保有銘柄の値動き"></section>
+
+  <p class="empty" id="empty" hidden>
+    保有銘柄がありません。<br>
+    <a href="./">ポートフォリオ</a>で銘柄を登録すると、ここに当日の値動きが並びます。
+  </p>
+
+  <section class="panel" aria-label="夜間PTSの入力について">
+    <h2 class="panel-title">夜間PTSの値は手入力です</h2>
+    <p class="dialog-text">
+      銘柄ごとのPTS株価を自動取得できる無料の窓口がありません。株探とYahoo!ファイナンスは
+      中継サービス経由のアクセスをbot判定でブロックしており、PTS運営元のジャパンネクスト証券は
+      掲載情報の再利用を禁止しています。回避はしない方針なので、<strong>価格だけご自分で入れてください</strong>。
+    </p>
+    <ul class="dialog-list">
+      <li>各銘柄の「PTSを見る」から株探かYahoo!ファイナンスを開き、表示された夜間PTS株価を入力欄に入れます。</li>
+      <li>入力すると、東証終値との差・保有株数ぶんの損益・ポートフォリオ合計が自動で計算されます。</li>
+      <li>入力内容はその夜のセッション（翌朝6時まで）のあいだ保存され、翌営業日には自動で消えます。</li>
+    </ul>
+    <p class="note">
+      夜間PTS（ジャパンネクストPTS ナイトタイム・セッション）の取引時間は16:30〜翌6:00ですが、
+      実際に注文できる時間帯は証券会社によって異なります（例：17:00〜23:59）。
+      ザラ場の値動きはYahoo Financeの5分足で、15〜20分ほど遅れることがあります。
+    </p>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      表示される数値はすべて参考値です。投資判断はご自身の責任でお願いします。
+      <a href="privacy.html">プライバシーについて</a>
+    </p>
+  </div>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/quotes.js"></script>
+<script src="js/night.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>

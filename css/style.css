@@ -948,3 +948,113 @@ body {
   /* Safari のツールバーが無いぶん、最下部に少し余白を足す */
   .site-footer { margin-bottom: calc(2rem + env(safe-area-inset-bottom)); }
 }
+
+/* ---------- 夜間PTS・場中の値動きページ ---------- */
+.session-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .8rem 1rem;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+
+.session-now { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+
+.session-badge {
+  font-size: .8rem;
+  font-weight: 700;
+  padding: .2rem .7rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.session-badge.is-morning,
+.session-badge.is-afternoon { background: var(--ok-weak); color: var(--ok); }
+.session-badge.is-lunch,
+.session-badge.is-closing,
+.session-badge.is-pre { background: var(--warn-weak); color: var(--warn); }
+.session-badge.is-night { background: var(--accent-weak); color: var(--accent); }
+.session-badge.is-weekend { background: var(--surface-2); color: var(--text-muted); }
+
+.session-clock { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
+.session-next { margin: 0; font-size: .78rem; color: var(--text-muted); }
+
+.session-track { display: flex; gap: 2px; height: 8px; margin-top: .2rem; }
+
+.track-seg {
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.track-seg > span { display: block; height: 100%; background: var(--accent); opacity: .75; }
+.track-seg.is-lunch > span,
+.track-seg.is-closing > span { background: var(--text-muted); opacity: .35; }
+.track-seg.is-night > span { background: var(--accent); opacity: 1; }
+
+/* 当日の値動きミニチャート */
+.spark {
+  width: 100%;
+  height: 64px;
+  display: block;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.spark-none {
+  height: 64px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border-radius: 8px;
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+
+.kv-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* 夜間PTSの入力 */
+.pts-input-line {
+  display: flex;
+  gap: .4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pts-input {
+  font: inherit;
+  font-size: var(--input-font-size);
+  font-variant-numeric: tabular-nums;
+  padding: .45rem .6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+.pts-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.pts-result {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-top: .5rem;
+}
+
+.pts-diff { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pts-pl { font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 560px) {
+  .session-clock { font-size: 1.2rem; }
+  .kv-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pts-input-line .btn { flex: 1; text-align: center; }
+}

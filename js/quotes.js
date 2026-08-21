@@ -148,6 +148,11 @@ window.Quotes = (() => {
     if (!symbol) throw new Error('証券コードが空です');
     const target = chartUrl(symbol);
 
+    return fetchViaRelays(target, extract);
+  }
+
+  /** 中継サービスを順に試して、最初に成功したものを返す共通処理。 */
+  async function fetchViaRelays(target, extractFn) {
     const relays = [];
     if (customRelay.includes('{url}')) {
       relays.push({
@@ -163,7 +168,7 @@ window.Quotes = (() => {
       try {
         const text = await fetchText(relay.url(target));
         const json = relay.parse(text);
-        const data = extract(json);
+        const data = extractFn(json);
         data.relay = relay.name;
         return data;
       } catch (err) {
@@ -175,5 +180,69 @@ window.Quotes = (() => {
     throw new Error(`取得に失敗しました（${errors.join(' / ')}）`);
   }
 
-  return { fetchQuote, toSymbol, setCustomRelay };
+  // ---------- 当日のザラ場（5分足） ----------
+
+  function intradayUrl(symbol) {
+    const q = new URLSearchParams({ range: '1d', interval: '5m', includePrePost: 'false' });
+    return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${q}`;
+  }
+
+  /**
+   * 5分足から、当日のセッションごとの値をまとめる。
+   * 東証は 9:00-11:30 / 12:30-15:30 で、昼休みの足は close が null で返ってくる。
+   * 夜間PTSはこのAPIには含まれない（日本株は hasPrePostMarketData が false）。
+   */
+  function extractIntraday(json) {
+    const err = json?.chart?.error;
+    if (err) throw new Error(err.description || err.code || 'APIエラー');
+    const r = json?.chart?.result?.[0];
+    if (!r) throw new Error('データが空です');
+
+    const meta = r.meta || {};
+    const stamps = Array.isArray(r.timestamp) ? r.timestamp : [];
+    const q = r.indicators?.quote?.[0] ?? {};
+
+    /** JSTでの「その日の何分目か」（9:00 = 540） */
+    const jstMinutes = (sec) => {
+      const d = new Date((sec + 9 * 3600) * 1000);
+      return d.getUTCHours() * 60 + d.getUTCMinutes();
+    };
+
+    const points = [];
+    for (let i = 0; i < stamps.length; i++) {
+      const close = Number(q.close?.[i]);
+      if (!Number.isFinite(close)) continue;
+      points.push({ t: stamps[i], min: jstMinutes(stamps[i]), c: close });
+    }
+    if (!points.length) throw new Error('当日の値動きがまだありません');
+
+    // 後場（12:30〜）の最初の足。昼休みを挟むので、これで前場と後場を切り分けられる。
+    const afternoon = points.find((p) => p.min >= 750) ?? null;
+    const morningEnd = [...points].reverse().find((p) => p.min <= 690) ?? null;
+
+    return {
+      symbol: String(meta.symbol || ''),
+      prevClose: Number.isFinite(meta.chartPreviousClose) ? meta.chartPreviousClose : null,
+      open: points[0].c,
+      last: Number.isFinite(meta.regularMarketPrice) ? meta.regularMarketPrice : points[points.length - 1].c,
+      lastTime: Number(meta.regularMarketTime) || points[points.length - 1].t,
+      high: Number.isFinite(meta.regularMarketDayHigh) ? meta.regularMarketDayHigh : Math.max(...points.map((p) => p.c)),
+      low: Number.isFinite(meta.regularMarketDayLow) ? meta.regularMarketDayLow : Math.min(...points.map((p) => p.c)),
+      volume: Number.isFinite(meta.regularMarketVolume) ? meta.regularMarketVolume : null,
+      morningClose: morningEnd ? morningEnd.c : null,
+      afternoonOpen: afternoon ? afternoon.c : null,
+      afternoonIndex: afternoon ? points.indexOf(afternoon) : -1,
+      points,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  /** 1銘柄ぶんの当日5分足を取得する。 */
+  async function fetchIntraday(code) {
+    const symbol = toSymbol(code);
+    if (!symbol) throw new Error('証券コードが空です');
+    return fetchViaRelays(intradayUrl(symbol), extractIntraday);
+  }
+
+  return { fetchQuote, fetchIntraday, toSymbol, setCustomRelay };
 })();
