@@ -34,6 +34,7 @@
       <div class="menu">
         <button type="button" id="menuBtn" class="icon-btn" title="メニュー" aria-label="メニュー" aria-haspopup="true" aria-expanded="false">⋯</button>
         <div class="menu-list" id="menuList" role="menu" hidden>
+          <button type="button" id="cashBtn" role="menuitem">投資余力を入力</button>
           <button type="button" id="settingsBtn" role="menuitem">設定</button>
           <button type="button" id="exportBtn" role="menuitem">JSONで書き出し</button>
           <button type="button" id="importBtn" role="menuitem">JSONを読み込み</button>
@@ -57,6 +58,8 @@
     <div class="stat"><span class="stat-value" id="statDiv">—</span><span class="stat-label" id="statDivLabel">年間配当</span></div>
     <div class="stat"><span class="stat-value" id="statYutai">—</span><span class="stat-label">優待（年・目安）</span></div>
     <div class="stat"><span class="stat-value" id="statYield">—</span><span class="stat-label">総合利回り（取得ベース）</span></div>
+    <div class="stat"><span class="stat-value" id="statCash">—</span><span class="stat-label">投資余力（現金）</span></div>
+    <div class="stat"><span class="stat-value" id="statAssets">—</span><span class="stat-label">資産合計（株＋現金）</span></div>
   </section>
 
   <p class="updated-line" id="updatedLine" hidden></p>
@@ -98,6 +101,7 @@
       <button type="button" data-view="table" aria-pressed="false">一覧表</button>
     </div>
     <label class="check"><input type="checkbox" id="afterTax"> 配当を税引後で表示（NISAは非課税）</label>
+    <label class="check"><input type="checkbox" id="showSold"> 売却済みも表示</label>
   </section>
 
   <section id="list" class="list" aria-label="保有銘柄"></section>
@@ -116,6 +120,17 @@
   <section class="panel" id="yutaiPanel" aria-label="優待一覧" hidden>
     <h2 class="panel-title">いま受け取れる株主優待</h2>
     <ul class="yutai-list" id="yutaiList"></ul>
+  </section>
+
+  <section class="panel" id="salesPanel" aria-label="売却履歴" hidden>
+    <h2 class="panel-title">売却履歴（実現損益）</h2>
+    <div class="stats stats-inline" id="salesTotals"></div>
+    <ul class="sales-list" id="salesList"></ul>
+    <p class="note">
+      実現損益は「（売却単価 − 平均取得単価）× 株数 − 手数料」で計算しています。
+      課税口座は利益に対して税率ぶんを差し引いた額も表示します（NISAは非課税）。
+      実際の税額は他の損益との通算や損失の繰越で変わるため、目安としてお使いください。
+    </p>
   </section>
 
 </main>
@@ -230,11 +245,79 @@
         <span>約定単価（円）<em>必須</em></span>
         <input type="number" id="buyPrice" min="0" step="0.01" inputmode="decimal" required>
       </label>
+      <label class="field field-sm">
+        <span>手数料（円）</span>
+        <input type="number" id="buyFee" min="0" step="1" inputmode="decimal" placeholder="0">
+      </label>
     </div>
+    <label class="check"><input type="checkbox" id="buyFromCash" checked> 支払額を投資余力から差し引く</label>
     <p class="hint" id="buyPreview"></p>
     <div class="dialog-actions">
       <button type="button" class="btn" data-close>キャンセル</button>
       <button type="submit" class="btn btn-primary">平均取得単価を更新</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 売却 ---------- -->
+<dialog id="sellDialog" class="dialog">
+  <form id="sellForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>売却を記録</h2>
+    <p class="dialog-sub" id="sellTargetName"></p>
+
+    <div class="row">
+      <label class="field">
+        <span>売却する株数<em>必須</em></span>
+        <input type="number" id="sellShares" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <label class="field">
+        <span>約定単価（円）<em>必須</em></span>
+        <input type="number" id="sellPrice" min="0" step="0.01" inputmode="decimal" required>
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="field field-sm">
+        <span>手数料（円）</span>
+        <input type="number" id="sellFee" min="0" step="1" inputmode="decimal" placeholder="0">
+      </label>
+      <label class="field">
+        <span>売却日</span>
+        <input type="date" id="sellDate">
+      </label>
+      <div class="field">
+        <span class="field-label">売却する株数の目安</span>
+        <div class="sell-quick" id="sellQuick"></div>
+      </div>
+    </div>
+
+    <label class="check"><input type="checkbox" id="sellToCash" checked> 受取額を投資余力に加える</label>
+    <label class="check"><input type="checkbox" id="sellWithholding" checked> 課税口座の税金を源泉徴収する（特定口座・源泉徴収あり）</label>
+
+    <div class="sell-preview" id="sellPreview"></div>
+    <p class="form-error" id="sellError" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">売却を記録</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 投資余力 ---------- -->
+<dialog id="cashDialog" class="dialog">
+  <form id="cashForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>投資余力（現金）</h2>
+    <p class="dialog-text">
+      口座ごとの買付余力を入れておくと、資産の合計や買い増しシミュレーションで「足りるかどうか」が分かります。
+    </p>
+    <div id="cashRows" class="cash-rows"></div>
+    <p class="hint">
+      売却を記録すると受取額が自動で加算され、買い増しを記録すると支払額が差し引かれます（それぞれダイアログのチェックで切り替えられます）。
+    </p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">保存</button>
     </div>
   </form>
 </dialog>

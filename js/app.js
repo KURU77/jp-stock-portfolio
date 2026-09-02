@@ -9,6 +9,8 @@
   const STORAGE_KEY = 'jp-stock-portfolio.holdings.v1';
   const SETTINGS_KEY = 'jp-stock-portfolio.settings.v1';
   const THEME_KEY = 'jp-stock-portfolio.theme';
+  const CASH_KEY = 'jp-stock-portfolio.cash.v1';
+  const SALES_KEY = 'jp-stock-portfolio.sales.v1';
 
   /** 上場株式の配当にかかる税率（所得税15.315% + 住民税5%）。設定で変更可。 */
   const DEFAULT_TAX_RATE = 20.315;
@@ -78,7 +80,31 @@
     buyTargetName: $('#buyTargetName'),
     buyShares: $('#buyShares'),
     buyPrice: $('#buyPrice'),
+    buyFee: $('#buyFee'),
+    buyFromCash: $('#buyFromCash'),
     buyPreview: $('#buyPreview'),
+    // 売却
+    sellDialog: $('#sellDialog'),
+    sellForm: $('#sellForm'),
+    sellTargetName: $('#sellTargetName'),
+    sellShares: $('#sellShares'),
+    sellPrice: $('#sellPrice'),
+    sellFee: $('#sellFee'),
+    sellDate: $('#sellDate'),
+    sellQuick: $('#sellQuick'),
+    sellToCash: $('#sellToCash'),
+    sellWithholding: $('#sellWithholding'),
+    sellPreview: $('#sellPreview'),
+    sellError: $('#sellError'),
+    // 投資余力
+    cashDialog: $('#cashDialog'),
+    cashForm: $('#cashForm'),
+    cashRows: $('#cashRows'),
+    // 売却履歴
+    salesPanel: $('#salesPanel'),
+    salesTotals: $('#salesTotals'),
+    salesList: $('#salesList'),
+    showSold: $('#showSold'),
     // シミュレーション
     simDialog: $('#simDialog'),
     simForm: $('#simForm'),
@@ -100,9 +126,14 @@
 
   /** @type {Array<object>} */
   let holdings = [];
+  /** @type {Record<string, number>} 口座ごとの投資余力（現金） */
+  let cash = {};
+  /** @type {Array<object>} 売却の記録（実現損益） */
+  let sales = [];
   let settings = defaultSettings();
   let editingId = null;
   let buyTargetId = null;
+  let sellTargetId = null;
   let simTargetId = null;
   /** 通信の同意を取ったあとに実行する処理 */
   let pendingNetAction = null;
@@ -182,6 +213,8 @@
       sort: 'value',
       /** '' | 'nisa' | ACCOUNTS の value */
       account: '',
+      /** 全部売った銘柄（0株）も一覧に出すか */
+      showSold: false,
     };
   }
 
@@ -201,7 +234,55 @@
       settings = defaultSettings();
     }
     window.Quotes.setCustomRelay(settings.relay);
+
+    try {
+      cash = normalizeCash(JSON.parse(localStorage.getItem(CASH_KEY) || '{}'));
+    } catch { cash = normalizeCash({}); }
+
+    try {
+      const raw = JSON.parse(localStorage.getItem(SALES_KEY) || '[]');
+      sales = Array.isArray(raw) ? raw.map(normalizeSale) : [];
+    } catch { sales = []; }
   }
+
+  /** 口座ごとの余力。知らないキーは捨て、足りないキーは0で埋める。 */
+  function normalizeCash(raw) {
+    const out = {};
+    for (const a of ACCOUNTS) {
+      const v = num(raw?.[a.value]);
+      out[a.value] = Number.isFinite(v) && v > 0 ? v : 0;
+    }
+    return out;
+  }
+
+  function normalizeSale(raw) {
+    const s = raw && typeof raw === 'object' ? raw : {};
+    return {
+      id: typeof s.id === 'string' && s.id ? s.id : newId(),
+      holdingId: typeof s.holdingId === 'string' ? s.holdingId : '',
+      code: normalizeCode(s.code),
+      name: String(s.name ?? ''),
+      account: ACCOUNTS.some((a) => a.value === s.account) ? s.account : DEFAULT_ACCOUNT,
+      date: typeof s.date === 'string' && s.date ? s.date : todayIso(),
+      shares: Math.max(0, Math.floor(num(s.shares) ?? 0)),
+      price: Math.max(0, num(s.price) ?? 0),
+      avgPrice: Math.max(0, num(s.avgPrice) ?? 0),
+      fee: Math.max(0, num(s.fee) ?? 0),
+      tax: Math.max(0, num(s.tax) ?? 0),
+      realized: num(s.realized) ?? 0,
+      proceeds: num(s.proceeds) ?? 0,
+      cashApplied: num(s.cashApplied) ?? 0,
+      createdAt: Number(s.createdAt) || Date.now(),
+    };
+  }
+
+  function todayIso() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const saveCash = () => localStorage.setItem(CASH_KEY, JSON.stringify(cash));
+  const saveSales = () => localStorage.setItem(SALES_KEY, JSON.stringify(sales));
 
   function save() {
     try {
@@ -294,6 +375,15 @@
   function accountFiltered() {
     return holdings.filter((h) => matchAccount(h, settings.account));
   }
+
+  /** 選ばれている口座の投資余力の合計 */
+  function cashOf(filter = settings.account) {
+    return ACCOUNTS
+      .filter((a) => matchAccount({ account: a.value }, filter))
+      .reduce((sum, a) => sum + (cash[a.value] ?? 0), 0);
+  }
+
+  const totalCash = () => ACCOUNTS.reduce((sum, a) => sum + (cash[a.value] ?? 0), 0);
 
   /** 保有株数に対して有効な優待の段（同株数の段が複数あるときはまとめて返す） */
   function currentTier(yutai, shares) {
@@ -425,6 +515,7 @@
     renderList();
     renderCalendar();
     renderYutaiPanel();
+    renderSalesPanel();
   }
 
   function renderStats() {
@@ -452,6 +543,11 @@
     $('#statYutai').textContent = yen(t.yutai);
     $('#statYield').textContent = pct(t.totalYield);
 
+    const money = cashOf();
+    $('#statCash').textContent = money ? yen(money) : '—';
+    const assets = (t.value ?? t.cost) + money;
+    $('#statAssets').textContent = assets ? yen(assets) : '—';
+
     const stamps = holdings.map((h) => h.quote?.fetchedAt).filter(Boolean);
     if (stamps.length) {
       el.updatedLine.hidden = false;
@@ -461,11 +557,11 @@
     }
   }
 
-  /** 口座ごとの小計。2口座以上を使っているときだけ表示する。 */
+  /** 口座ごとの小計。2口座以上を使っているか、余力を入れていれば表示する。 */
   function renderAccountPanel() {
     const used = ACCOUNTS
       .map((a) => ({ account: a, rows: holdings.filter((h) => h.account === a.value) }))
-      .filter((g) => g.rows.length);
+      .filter((g) => g.rows.length || (cash[g.account.value] ?? 0) > 0);
 
     el.accountPanel.hidden = used.length < 2;
     if (used.length < 2) return;
@@ -484,8 +580,54 @@
     <span>取得 ${esc(yen(t.cost))}</span>
     <span class="${plClass(t.pl)}">損益 ${esc(signed(t.pl))}${t.plRate == null ? '' : `（${t.plRate > 0 ? '+' : ''}${(t.plRate * 100).toFixed(1)}%）`}</span>
     <span>配当 ${esc(yen(t.div))}${!account.taxable && settings.afterTax ? '（非課税）' : ''}</span>
+    <span>余力 ${esc(yen(cash[account.value] ?? 0))}${(cash[account.value] ?? 0) > 0 ? `／合計 ${esc(yen((t.value ?? t.cost) + (cash[account.value] ?? 0)))}` : ''}</span>
   </span>
 </button>`;
+    }).join('');
+  }
+
+  /** 売却履歴と実現損益。 */
+  function renderSalesPanel() {
+    const rows = sales
+      .filter((s) => matchAccount(s, settings.account))
+      .slice()
+      .sort((a, b) => (b.date === a.date ? b.createdAt - a.createdAt : b.date.localeCompare(a.date)));
+
+    el.salesPanel.hidden = rows.length === 0;
+    if (!rows.length) return;
+
+    const thisYear = String(new Date().getFullYear());
+    const sum = (list, key) => list.reduce((n, s) => n + (s[key] ?? 0), 0);
+    const yearRows = rows.filter((s) => s.date.startsWith(thisYear));
+
+    const tile = (label, value, klass) =>
+      `<div class="stat"><span class="stat-value ${klass ?? ''}">${esc(value)}</span><span class="stat-label">${esc(label)}</span></div>`;
+
+    el.salesTotals.innerHTML =
+      tile(`${thisYear}年の実現損益（税引前）`, signed(sum(yearRows, 'realized')), plClass(sum(yearRows, 'realized')))
+      + tile(`${thisYear}年の税額の目安`, yen(sum(yearRows, 'tax')))
+      + tile('全期間の実現損益（税引前）', signed(sum(rows, 'realized')), plClass(sum(rows, 'realized')))
+      + tile('売却の記録', `${rows.length}件`);
+
+    el.salesList.innerHTML = rows.map((s) => {
+      const account = ACCOUNTS.find((a) => a.value === s.account) ?? ACCOUNTS[0];
+      const afterTax = s.realized - s.tax;
+      return `
+<li data-sale="${esc(s.id)}">
+  <div class="sale-head">
+    <span class="sale-date num">${esc(s.date)}</span>
+    <span class="sale-name">${esc(s.name || s.code)}</span>
+    <span class="badge ${account.taxable ? '' : 'ok'}">${esc(account.short)}</span>
+    <button type="button" class="row-btn" data-act="undo-sale">取り消し</button>
+  </div>
+  <div class="sale-body">
+    <span>${esc(s.shares.toLocaleString('ja-JP'))}株 × ${esc(yen(s.price, 2))}</span>
+    <span>取得 ${esc(yen(s.avgPrice, 2))}</span>
+    <span class="${plClass(s.realized)}">実現損益 ${esc(signed(s.realized))}</span>
+    ${s.tax > 0 ? `<span>税 ${esc(yen(s.tax))} → 手取り ${esc(signed(afterTax))}</span>` : (account.taxable ? '' : '<span class="badge ok">非課税</span>')}
+    <span>受取額 ${esc(yen(s.proceeds))}</span>
+  </div>
+</li>`;
     }).join('');
   }
 
@@ -526,6 +668,8 @@
   function visibleHoldings() {
     const q = el.search.value.trim().toLowerCase();
     let rows = accountFiltered().filter((h) => {
+      // 全部売った銘柄は既定で隠す（記録は残っているので、いつでも戻せる）。
+      if (h.shares <= 0 && !settings.showSold) return false;
       if (!q) return true;
       return [h.code, h.name, h.memo, h.quote?.nameEn].filter(Boolean).join(' ').toLowerCase().includes(q);
     });
@@ -595,11 +739,13 @@
       return now + next + note;
     })();
 
+    const sold = h.shares <= 0;
+
     return `
-<article class="card" data-id="${esc(h.id)}">
+<article class="card${sold ? ' is-sold' : ''}" data-id="${esc(h.id)}">
   <div class="card-top">
     <h3 class="card-title">${esc(h.name || '(名称未設定)')}
-      <span class="card-code"><span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span> ${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
+      <span class="card-code">${sold ? '<span class="badge">売却済み</span> ' : ''}<span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span> ${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
     <div class="price-box">
       <span class="price-now">${c.price == null ? '—' : esc(c.price.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))}<span style="font-size:.7em">円</span></span>
       ${chg == null ? '' : `<span class="price-chg ${plClass(chg)}">${chg > 0 ? '+' : ''}${esc(chg.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))} (${chgRate > 0 ? '+' : ''}${esc((chgRate * 100).toFixed(2))}%)</span>`}
@@ -637,6 +783,7 @@
   <div class="card-actions">
     <button type="button" class="btn" data-act="sim">シミュレーション</button>
     <button type="button" class="btn" data-act="buy">買い増し</button>
+    ${sold ? '' : '<button type="button" class="btn" data-act="sell">売却</button>'}
     <button type="button" class="btn" data-act="refresh">株価更新</button>
     <button type="button" class="btn" data-act="edit">編集</button>
     <button type="button" class="btn link-danger" data-act="delete">削除</button>
@@ -931,6 +1078,8 @@
     el.buyTargetName.textContent = `${h.name || h.code}［${accountOf(h).label}］（現在 ${h.shares.toLocaleString('ja-JP')}株・平均 ${yen(h.avgPrice, 2)}）`;
     el.buyShares.value = presetShares != null ? String(presetShares) : String(h.unit || 100);
     el.buyPrice.value = presetPrice != null ? String(Math.round(presetPrice * 10) / 10) : (h.quote?.price != null ? String(h.quote.price) : '');
+    el.buyFee.value = '';
+    el.buyFromCash.checked = true;
     updateBuyPreview();
     el.buyDialog.showModal();
   }
@@ -940,25 +1089,223 @@
     if (!h) return;
     const addShares = num(el.buyShares.value);
     const addPrice = num(el.buyPrice.value);
+    const fee = num(el.buyFee.value) ?? 0;
     if (!addShares || addPrice == null) { el.buyPreview.textContent = ''; return; }
     const shares = h.shares + addShares;
-    const avg = (h.avgPrice * h.shares + addPrice * addShares) / shares;
+    const payment = addPrice * addShares + fee;
+    const avg = (h.avgPrice * h.shares + addPrice * addShares + fee) / shares;
+    const money = cash[h.account] ?? 0;
+    const rest = money - payment;
     el.buyPreview.textContent =
-      `→ ${shares.toLocaleString('ja-JP')}株 / 平均取得単価 ${yen(avg, 2)} / 追加投資額 ${yen(addPrice * addShares)}`;
+      `→ ${shares.toLocaleString('ja-JP')}株 / 平均取得単価 ${yen(avg, 2)} / 支払額 ${yen(payment)}`
+      + (el.buyFromCash.checked && money > 0
+        ? `／余力 ${yen(money)} → ${rest < 0 ? `${yen(0)}（${yen(-rest)}不足）` : yen(rest)}`
+        : '');
   }
 
   function submitBuy(event) {
     const h = holdings.find((x) => x.id === buyTargetId);
     const addShares = num(el.buyShares.value);
     const addPrice = num(el.buyPrice.value);
+    const fee = Math.max(0, num(el.buyFee.value) ?? 0);
     if (!h || !addShares || addPrice == null) { event.preventDefault(); return; }
+
     const shares = h.shares + Math.floor(addShares);
-    h.avgPrice = Math.round(((h.avgPrice * h.shares + addPrice * addShares) / shares) * 100) / 100;
+    // 手数料は取得価額に含める（実務の扱いに合わせる）。
+    h.avgPrice = Math.round(((h.avgPrice * h.shares + addPrice * addShares + fee) / shares) * 100) / 100;
     h.shares = shares;
     h.updatedAt = Date.now();
+
+    let short = 0;
+    if (el.buyFromCash.checked) {
+      const payment = addPrice * addShares + fee;
+      const money = cash[h.account] ?? 0;
+      short = Math.max(0, payment - money);
+      cash[h.account] = Math.max(0, money - payment);
+      saveCash();
+    }
+
     save();
     render();
-    toast(`${h.name || h.code} を ${Math.floor(addShares).toLocaleString('ja-JP')}株 買い増しました`);
+    toast(`${h.name || h.code} を ${Math.floor(addShares).toLocaleString('ja-JP')}株 買い増しました`
+      + (short > 0 ? `（余力が ${yen(short)} 足りなかったので0にしました）` : ''));
+  }
+
+  // ---------- 売却 ----------
+
+  function openSellDialog(id) {
+    const h = holdings.find((x) => x.id === id);
+    if (!h || h.shares <= 0) return;
+    sellTargetId = id;
+    el.sellError.hidden = true;
+    el.sellTargetName.textContent =
+      `${h.name || h.code}［${accountOf(h).label}］（保有 ${h.shares.toLocaleString('ja-JP')}株・平均取得単価 ${yen(h.avgPrice, 2)}）`;
+
+    el.sellShares.value = String(h.shares);
+    el.sellShares.max = String(h.shares);
+    el.sellPrice.value = h.quote?.price != null ? String(h.quote.price) : '';
+    el.sellFee.value = '';
+    el.sellDate.value = todayIso();
+    el.sellToCash.checked = true;
+    el.sellWithholding.checked = accountOf(h).taxable;
+
+    const unit = h.unit || 100;
+    const half = Math.floor(h.shares / 2 / unit) * unit;
+    const quick = [];
+    const addQuick = (label, shares) => {
+      if (shares <= 0 || shares > h.shares) return;
+      if (quick.some((q) => q.shares === shares)) return; // 同じ株数のボタンは1つでいい
+      quick.push({ label, shares });
+    };
+    addQuick('全部', h.shares);
+    addQuick(`半分（${half.toLocaleString('ja-JP')}株）`, half);
+    addQuick(`${unit.toLocaleString('ja-JP')}株`, unit);
+    el.sellQuick.innerHTML = quick
+      .map((q) => `<button type="button" class="btn btn-sm" data-sell-shares="${q.shares}">${esc(q.label)}</button>`)
+      .join('');
+
+    updateSellPreview();
+    el.sellDialog.showModal();
+  }
+
+  /** 売却の内訳を計算する。実現損益は「（売値 − 平均取得単価）× 株数 − 手数料」。 */
+  function calcSell(h) {
+    const shares = Math.floor(num(el.sellShares.value) ?? 0);
+    const price = num(el.sellPrice.value);
+    const fee = Math.max(0, num(el.sellFee.value) ?? 0);
+    if (!h || shares <= 0 || price == null) return null;
+
+    const gross = price * shares;
+    const realized = (price - h.avgPrice) * shares - fee;
+    const taxable = accountOf(h).taxable && realized > 0;
+    const tax = taxable ? Math.floor(realized * (1 - taxFactor())) : 0;
+    const withheld = el.sellWithholding.checked ? tax : 0;
+    return {
+      shares, price, fee, gross, realized, tax, withheld,
+      proceeds: gross - fee - withheld,
+      restShares: h.shares - shares,
+    };
+  }
+
+  function updateSellPreview() {
+    const h = holdings.find((x) => x.id === sellTargetId);
+    const c = calcSell(h);
+    if (!c) { el.sellPreview.innerHTML = ''; return; }
+
+    const money = cash[h.account] ?? 0;
+    const row = (label, value, klass) =>
+      `<tr><td>${esc(label)}</td><td class="${klass ?? ''}">${esc(value)}</td></tr>`;
+
+    el.sellPreview.innerHTML = `
+<table class="sim-table">
+  <tbody>
+    ${row('売却代金', `${c.shares.toLocaleString('ja-JP')}株 × ${yen(c.price, 2)} = ${yen(c.gross)}`)}
+    ${c.fee > 0 ? row('手数料', `-${yen(c.fee)}`) : ''}
+    ${row('実現損益（税引前）', signed(c.realized), plClass(c.realized))}
+    ${accountOf(h).taxable
+      ? row(`税金の目安（${settings.taxRate}%）`, c.tax > 0 ? `-${yen(c.tax)}${el.sellWithholding.checked ? '' : '（受取額からは引かない）'}` : '利益が出ていないので0円')
+      : row('税金', 'NISAのため非課税', 'up')}
+    ${row('受取額', yen(c.proceeds))}
+    ${el.sellToCash.checked ? row('投資余力', `${yen(money)} → ${yen(money + c.proceeds)}`) : ''}
+    ${row('売却後の保有', `${c.restShares.toLocaleString('ja-JP')}株${c.restShares === 0 ? '（全部売却）' : ''}`)}
+  </tbody>
+</table>`;
+  }
+
+  function submitSell(event) {
+    const h = holdings.find((x) => x.id === sellTargetId);
+    const c = calcSell(h);
+    if (!h || !c) {
+      event.preventDefault();
+      el.sellError.textContent = '売却する株数と約定単価を入力してください。';
+      el.sellError.hidden = false;
+      return;
+    }
+    if (c.shares > h.shares) {
+      event.preventDefault();
+      el.sellError.textContent = `保有株数（${h.shares.toLocaleString('ja-JP')}株）を超えています。`;
+      el.sellError.hidden = false;
+      return;
+    }
+
+    const cashApplied = el.sellToCash.checked ? c.proceeds : 0;
+    sales.push(normalizeSale({
+      holdingId: h.id,
+      code: h.code,
+      name: h.name,
+      account: h.account,
+      date: el.sellDate.value || todayIso(),
+      shares: c.shares,
+      price: c.price,
+      avgPrice: h.avgPrice,
+      fee: c.fee,
+      tax: c.tax,
+      realized: c.realized,
+      proceeds: c.proceeds,
+      cashApplied,
+      createdAt: Date.now(),
+    }));
+
+    // 売っても平均取得単価は変わらない（残った株の取得価額はそのまま）。
+    h.shares = c.restShares;
+    h.updatedAt = Date.now();
+
+    if (cashApplied) {
+      cash[h.account] = (cash[h.account] ?? 0) + cashApplied;
+      saveCash();
+    }
+
+    saveSales();
+    save();
+    render();
+    toast(`${h.name || h.code} を ${c.shares.toLocaleString('ja-JP')}株 売却しました（実現損益 ${signed(c.realized)}）`);
+  }
+
+  /** 売却の取り消し。株数と余力を元に戻す。 */
+  function undoSale(saleId) {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale) return;
+    const h = holdings.find((x) => x.id === sale.holdingId)
+      ?? holdings.find((x) => x.code === sale.code && x.account === sale.account);
+
+    if (!confirm(`${sale.name || sale.code} の売却（${sale.date}・${sale.shares.toLocaleString('ja-JP')}株）を取り消しますか？`
+      + (h ? '\n株数と投資余力を元に戻します。' : '\n※銘柄が削除されているため、投資余力だけ元に戻します。'))) return;
+
+    if (h) {
+      h.shares += sale.shares;
+      h.updatedAt = Date.now();
+      save();
+    }
+    if (sale.cashApplied) {
+      cash[sale.account] = Math.max(0, (cash[sale.account] ?? 0) - sale.cashApplied);
+      saveCash();
+    }
+    sales = sales.filter((s) => s.id !== saleId);
+    saveSales();
+    render();
+    toast('売却の記録を取り消しました');
+  }
+
+  // ---------- 投資余力 ----------
+
+  function openCashDialog() {
+    el.cashRows.innerHTML = ACCOUNTS.map((a) => `
+<label class="field">
+  <span>${esc(a.label)}</span>
+  <input type="number" class="cash-input" data-account="${esc(a.value)}" min="0" step="1"
+         inputmode="numeric" value="${cash[a.value] ? String(cash[a.value]) : ''}" placeholder="0">
+</label>`).join('');
+    el.cashDialog.showModal();
+  }
+
+  function submitCash() {
+    for (const input of el.cashRows.querySelectorAll('.cash-input')) {
+      const v = num(input.value);
+      cash[input.dataset.account] = Number.isFinite(v) && v > 0 ? v : 0;
+    }
+    saveCash();
+    render();
+    toast(`投資余力を保存しました（合計 ${yen(totalCash())}）`);
   }
 
   // ---------- シミュレーション ----------
@@ -1035,6 +1382,11 @@
   <tbody>
     ${row('保有株数', `${h.shares.toLocaleString('ja-JP')}株`, `${(h.shares + add).toLocaleString('ja-JP')}株`, add ? `+${add.toLocaleString('ja-JP')}株` : '')}
     ${row('必要な追加資金', '—', yen(addCost), '')}
+    ${(cash[h.account] ?? 0) > 0
+      ? row('投資余力', yen(cash[h.account]), addCost > (cash[h.account] ?? 0)
+        ? `${yen(0)}（${yen(addCost - cash[h.account])}不足）`
+        : yen((cash[h.account] ?? 0) - addCost), '')
+      : ''}
     ${row('取得金額', yen(before.cost), yen(afterCost), signed(addCost))}
     ${row('平均取得単価', yen(h.avgPrice, 2), yen(newAvg, 2), '')}
     ${row(`年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}`, yen(before.divShown), yen(after.divShown), divDiff != null ? signed(divDiff) : '', true)}
@@ -1098,10 +1450,12 @@ ${yutaiLine}
   function exportJson() {
     const payload = {
       app: 'jp-stock-portfolio',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       settings: { taxRate: settings.taxRate },
       holdings,
+      cash,
+      sales,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1136,10 +1490,33 @@ ${yutaiLine}
         }
       }
       if (parsed.settings?.taxRate != null) settings.taxRate = Number(parsed.settings.taxRate);
+
+      // 投資余力は「入っていれば置き換える」。売却履歴はIDで重複を避けて足す。
+      let cashLoaded = false;
+      if (parsed.cash && typeof parsed.cash === 'object') {
+        cash = normalizeCash(parsed.cash);
+        saveCash();
+        cashLoaded = true;
+      }
+      let salesAdded = 0;
+      if (Array.isArray(parsed.sales)) {
+        const known = new Set(sales.map((s) => s.id));
+        for (const raw of parsed.sales) {
+          const s = normalizeSale(raw);
+          if (known.has(s.id)) continue;
+          sales.push(s);
+          known.add(s.id);
+          salesAdded++;
+        }
+        saveSales();
+      }
+
       save();
       saveSettings();
       render();
-      toast(`読み込みました（追加 ${added}件 / 更新 ${updated}件）`);
+      toast(`読み込みました（追加 ${added}件 / 更新 ${updated}件`
+        + (salesAdded ? ` / 売却 ${salesAdded}件` : '')
+        + (cashLoaded ? ' / 投資余力も反映' : '') + '）');
     } catch (err) {
       console.error(err);
       toast('読み込みに失敗しました（JSONの形式を確認してください）');
@@ -1232,9 +1609,13 @@ ${yutaiLine}
     });
     $('#sampleBtn').addEventListener('click', addSample);
     $('#clearBtn').addEventListener('click', () => {
-      if (!confirm('登録した銘柄をすべて削除します。よろしいですか？')) return;
+      if (!confirm('登録した銘柄・売却履歴・投資余力をすべて削除します。よろしいですか？')) return;
       holdings = [];
+      sales = [];
+      cash = normalizeCash({});
       save();
+      saveSales();
+      saveCash();
       render();
       toast('すべて削除しました');
     });
@@ -1254,6 +1635,7 @@ ${yutaiLine}
       switch (btn.dataset.act) {
         case 'sim': openSimDialog(id); break;
         case 'buy': openBuyDialog(id); break;
+        case 'sell': openSellDialog(id); break;
         case 'edit': openHoldingDialog(id); break;
         case 'refresh': requestQuotes([id]); break;
         case 'delete': {
@@ -1357,6 +1739,40 @@ ${yutaiLine}
     el.buyForm.addEventListener('submit', submitBuy);
     el.buyShares.addEventListener('input', updateBuyPreview);
     el.buyPrice.addEventListener('input', updateBuyPreview);
+    el.buyFee.addEventListener('input', updateBuyPreview);
+    el.buyFromCash.addEventListener('change', updateBuyPreview);
+
+    // 売却ダイアログ
+    el.sellForm.addEventListener('submit', submitSell);
+    for (const node of [el.sellShares, el.sellPrice, el.sellFee]) {
+      node.addEventListener('input', updateSellPreview);
+    }
+    for (const node of [el.sellToCash, el.sellWithholding]) {
+      node.addEventListener('change', updateSellPreview);
+    }
+    el.sellQuick.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-sell-shares]');
+      if (!btn) return;
+      el.sellShares.value = btn.dataset.sellShares;
+      updateSellPreview();
+    });
+
+    // 投資余力
+    $('#cashBtn').addEventListener('click', openCashDialog);
+    el.cashForm.addEventListener('submit', submitCash);
+
+    // 売却履歴の取り消し
+    el.salesList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act="undo-sale"]');
+      if (!btn) return;
+      undoSale(btn.closest('[data-sale]')?.dataset.sale);
+    });
+
+    el.showSold.addEventListener('change', () => {
+      settings.showSold = el.showSold.checked;
+      saveSettings();
+      renderList();
+    });
 
     // シミュレーション
     el.simAdd.addEventListener('input', () => {
@@ -1426,6 +1842,7 @@ ${yutaiLine}
     el.sortBy.value = settings.sort;
     el.filterAccount.value = settings.account ?? '';
     el.afterTax.checked = !!settings.afterTax;
+    el.showSold.checked = !!settings.showSold;
     for (const b of el.viewMode.querySelectorAll('button')) {
       const on = b.dataset.view === settings.view;
       b.classList.toggle('is-on', on);

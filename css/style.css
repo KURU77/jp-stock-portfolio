@@ -925,8 +925,15 @@ body {
   .wrap { width: min(1080px, 100% - 1.5rem); }
   .logo { font-size: .95rem; flex: 1 1 100%; margin-right: 0; }
   .header-inner { gap: .5rem; min-height: 52px; }
-  .header-actions { gap: .35rem; width: 100%; }
-  .header-actions .btn { flex: 1; padding: .45rem .5rem; font-size: .82rem; text-align: center; }
+  /* ボタンが増えても収まるように、狭い画面では折り返させる */
+  .header-actions { gap: .35rem; width: 100%; flex-wrap: wrap; }
+  .header-actions .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: .45rem .5rem;
+    font-size: .82rem;
+    text-align: center;
+  }
   .stats { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
   .stat { padding: .7rem .8rem; }
   .stat-value { font-size: 1.15rem; }
@@ -1058,3 +1065,47 @@ body {
   .kv-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pts-input-line .btn { flex: 1; text-align: center; }
 }
+
+/* ---------- 投資余力・売却履歴 ---------- */
+.cash-rows { display: flex; flex-direction: column; gap: .6rem; }
+
+.stats-inline { margin: 0 0 1rem; }
+.stats-inline .stat { padding: .6rem .75rem; }
+.stats-inline .stat-value { font-size: 1.05rem; }
+
+.sales-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.sales-list li {
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: .5rem .7rem;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  min-width: 0;
+}
+
+.sale-head { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; min-width: 0; }
+.sale-date { font-size: .72rem; color: var(--text-muted); }
+.sale-name { font-weight: 700; font-size: .88rem; overflow-wrap: anywhere; }
+.sale-head .row-btn { margin-left: auto; }
+
+.sale-body {
+  display: flex;
+  gap: .3rem .9rem;
+  flex-wrap: wrap;
+  font-size: .78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-body .up, .sale-body .down { font-weight: 700; }
+
+/* 売却済みの銘柄カードは沈めて表示する */
+.card.is-sold { opacity: .72; }
+.card.is-sold .price-now { font-weight: 600; }
+
+.sell-quick { display: flex; gap: .35rem; flex-wrap: wrap; }
+.sell-preview { margin-top: .25rem; }
+.sell-preview .sim-table td:first-child { color: var(--text-muted); font-size: .78rem; }
+.sell-preview .sim-table td:last-child { text-align: right; font-weight: 600; }
