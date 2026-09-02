@@ -10,7 +10,7 @@
  * 収録ファイルを増やしたときは PRECACHE に足し、VERSION を上げる。
  */
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `jp-stock-portfolio-${VERSION}`;
 
 /** 初回インストール時にまとめて取っておくファイル。これだけあればオフラインでも開ける。 */

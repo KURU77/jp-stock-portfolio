@@ -1307,3 +1307,88 @@ body {
   .pl-name { flex-basis: 6rem; font-size: .76rem; }
   .pl-value { flex-basis: 5.5rem; font-size: .76rem; }
 }
+
+/* ---------- グラフの操作（拡大・タップ） ---------- */
+.chart-box.is-interactive {
+  position: relative;
+  /* 縦スクロールはブラウザに任せ、横の動きとつまみ操作はこちらで受ける */
+  touch-action: pan-y;
+  cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.chart-box .chart { width: 100%; height: 100%; }
+
+.cross .cross-line { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.cross .cross-dot { stroke: var(--surface); stroke-width: 1.5; }
+
+.chart-tip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+  padding: .45rem .6rem;
+  font-size: .74rem;
+  line-height: 1.5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  max-width: 60%;
+}
+
+.chart-tip .tip-date {
+  font-weight: 700;
+  font-size: .72rem;
+  color: var(--text-muted);
+  margin-bottom: .1rem;
+}
+
+.chart-tip .tip-row {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  white-space: nowrap;
+}
+
+.chart-tip .tip-row strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chart-tip .tip-extra { color: var(--text-muted); border-top: 1px solid var(--border); margin-top: .15rem; padding-top: .15rem; }
+
+.chart-tools {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin-top: .5rem;
+}
+
+.chart-zoom { display: inline-flex; gap: .3rem; }
+
+.chart-zoom button {
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  min-width: 2.2rem;
+  padding: .25rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chart-zoom button:hover { background: var(--surface-2); }
+
+.chart-window {
+  font-size: .75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-window strong { font-variant-numeric: tabular-nums; }
+.chart-usage { margin-top: .4rem; }

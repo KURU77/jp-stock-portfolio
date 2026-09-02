@@ -52,7 +52,20 @@
       </div>
     </div>
     <div id="historyChart" class="chart-box"></div>
+    <div class="chart-tools">
+      <div class="chart-zoom" role="group" aria-label="拡大・縮小">
+        <button type="button" data-zoom="out" aria-label="縮小">−</button>
+        <button type="button" data-zoom="in" aria-label="拡大">＋</button>
+        <button type="button" data-zoom="reset">全体</button>
+      </div>
+      <span class="chart-window" id="historyWindow"></span>
+    </div>
     <div class="chart-legend" id="historyLegend"></div>
+    <p class="hint chart-usage">
+      グラフをタップ（マウスならクリック／ドラッグ）すると、その日の日付と金額を表示します。
+      2本指でつまむと拡大・縮小、2本指でなぞると左右に移動できます（マウスホイールでも拡大・縮小）。
+      いちばん拡大すると1日ずつ（日足）で見られます。
+    </p>
     <p class="note" id="historyNote">
       「1年の推移を取得」を押すと、保有銘柄の日足を取得して資産の推移を描きます。
       <strong>いまの保有株数のまま1年前から持っていた場合</strong>の評価額なので、
@@ -64,6 +77,7 @@
     <h2 class="panel-title">記録された資産（アプリを開いた日の実績）</h2>
     <div id="snapshotChart" class="chart-box"></div>
     <div class="chart-legend" id="snapshotLegend"></div>
+    <p class="hint chart-usage">こちらもタップで日付と金額、2本指で拡大・縮小できます。</p>
     <p class="note">
       アプリを開いて株価を更新するたび、その日の資産合計・評価額・取得金額・現金を1日1件だけ記録しています。
       こちらは売買や入金もそのまま反映された<strong>実際の推移</strong>です（記録した日だけが点になります）。
