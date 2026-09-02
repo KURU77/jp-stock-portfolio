@@ -11,6 +11,10 @@
   const THEME_KEY = 'jp-stock-portfolio.theme';
   const CASH_KEY = 'jp-stock-portfolio.cash.v1';
   const SALES_KEY = 'jp-stock-portfolio.sales.v1';
+  const PLANS_KEY = 'jp-stock-portfolio.plans.v1';
+
+  /** NISAの年間投資枠。積み立ての年額がどれくらい使うかの目安に使う。 */
+  const NISA_ANNUAL_LIMIT = { 'nisa-growth': 2_400_000, 'nisa-tsumitate': 1_200_000 };
 
   /** 上場株式の配当にかかる税率（所得税15.315% + 住民税5%）。設定で変更可。 */
   const DEFAULT_TAX_RATE = 20.315;
@@ -100,6 +104,33 @@
     cashDialog: $('#cashDialog'),
     cashForm: $('#cashForm'),
     cashRows: $('#cashRows'),
+    // 積み立て
+    planPanel: $('#planPanel'),
+    planSummary: $('#planSummary'),
+    planList: $('#planList'),
+    addPlanBtn: $('#addPlanBtn'),
+    planDialog: $('#planDialog'),
+    planForm: $('#planForm'),
+    planDialogTitle: $('#planDialogTitle'),
+    planCodeInput: $('#planCodeInput'),
+    planCodeSuggest: $('#planCodeSuggest'),
+    planAccountInput: $('#planAccountInput'),
+    planAmountInput: $('#planAmountInput'),
+    planDayInput: $('#planDayInput'),
+    planUnitInput: $('#planUnitInput'),
+    planMemoInput: $('#planMemoInput'),
+    planPreview: $('#planPreview'),
+    planError: $('#planError'),
+    planBuyDialog: $('#planBuyDialog'),
+    planBuyForm: $('#planBuyForm'),
+    planBuyTargetName: $('#planBuyTargetName'),
+    planBuyAmount: $('#planBuyAmount'),
+    planBuyPrice: $('#planBuyPrice'),
+    planBuyFee: $('#planBuyFee'),
+    planBuyDate: $('#planBuyDate'),
+    planBuyFromCash: $('#planBuyFromCash'),
+    planBuyPreview: $('#planBuyPreview'),
+    planBuyError: $('#planBuyError'),
     // 売却履歴
     salesPanel: $('#salesPanel'),
     salesTotals: $('#salesTotals'),
@@ -130,6 +161,10 @@
   let cash = {};
   /** @type {Array<object>} 売却の記録（実現損益） */
   let sales = [];
+  /** @type {Array<object>} 毎月の積み立て設定 */
+  let plans = [];
+  let editingPlanId = null;
+  let planBuyTargetId = null;
   let settings = defaultSettings();
   let editingId = null;
   let buyTargetId = null;
@@ -243,7 +278,51 @@
       const raw = JSON.parse(localStorage.getItem(SALES_KEY) || '[]');
       sales = Array.isArray(raw) ? raw.map(normalizeSale) : [];
     } catch { sales = []; }
+
+    try {
+      const raw = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
+      plans = Array.isArray(raw) ? raw.map(normalizePlan) : [];
+    } catch { plans = []; }
   }
+
+  function normalizePlan(raw) {
+    const p = raw && typeof raw === 'object' ? raw : {};
+    const day = Math.floor(num(p.day) ?? 1);
+    return {
+      id: typeof p.id === 'string' && p.id ? p.id : newId(),
+      code: normalizeCode(p.code),
+      name: String(p.name ?? ''),
+      account: ACCOUNTS.some((a) => a.value === p.account) ? p.account : DEFAULT_ACCOUNT,
+      amount: Math.max(0, Math.round(num(p.amount) ?? 0)),
+      // 月末が無い月（2月など）でも動くように28日までにしておく。
+      day: Math.min(Math.max(Number.isFinite(day) ? day : 1, 1), 28),
+      // 単元未満株（S株・ミニ株）なら1株単位。単元でしか買えないなら100など。
+      unit: Math.max(1, Math.floor(num(p.unit) ?? 1)),
+      active: p.active !== false,
+      memo: String(p.memo ?? ''),
+      history: Array.isArray(p.history) ? p.history.map(normalizePlanBuy).filter((h) => h.shares > 0) : [],
+      createdAt: Number(p.createdAt) || Date.now(),
+      updatedAt: Number(p.updatedAt) || Date.now(),
+    };
+  }
+
+  function normalizePlanBuy(raw) {
+    const h = raw && typeof raw === 'object' ? raw : {};
+    const date = typeof h.date === 'string' && h.date ? h.date : todayIso();
+    return {
+      ym: typeof h.ym === 'string' && h.ym ? h.ym : date.slice(0, 7),
+      date,
+      shares: Math.max(0, Math.floor(num(h.shares) ?? 0)),
+      price: Math.max(0, num(h.price) ?? 0),
+      fee: Math.max(0, num(h.fee) ?? 0),
+      amount: Math.max(0, num(h.amount) ?? 0),
+    };
+  }
+
+  const savePlans = () => localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+
+  /** 'YYYY-MM'（いまの月） */
+  const currentYm = () => todayIso().slice(0, 7);
 
   /** 口座ごとの余力。知らないキーは捨て、足りないキーは0で埋める。 */
   function normalizeCash(raw) {
@@ -514,6 +593,7 @@
     renderNisaPanel();
     renderList();
     renderCalendar();
+    renderPlanPanel();
     renderYutaiPanel();
     renderSalesPanel();
   }
@@ -665,6 +745,192 @@
       (tsumitate > 0 ? `<p class="gauge-rest">うちつみたて投資枠：${esc(yen(tsumitate))}</p>` : '');
   }
 
+  // ---------- 積み立て ----------
+
+  /** 積み立て先の保有銘柄（同じコード・同じ口座）。無ければ0株で作る。 */
+  function holdingForPlan(plan, create = false) {
+    let h = holdings.find((x) => x.code === plan.code && x.account === plan.account);
+    if (!h && create) {
+      const preset = presetByCode.get(plan.code);
+      h = normalize({
+        code: plan.code,
+        account: plan.account,
+        name: plan.name || nameOfCode(plan.code),
+        shares: 0,
+        avgPrice: 0,
+        unit: preset?.unit ?? 100,
+        months: preset?.months ?? [],
+        yutai: preset?.yutai ?? null,
+        memo: '積み立てで購入',
+      });
+      holdings.push(h);
+    }
+    return h ?? null;
+  }
+
+  /** 積み立て1件ぶんの実績と、いまの株価での見込み。 */
+  function planStats(plan) {
+    const h = holdingForPlan(plan);
+    const price = num(h?.quote?.price);
+    const invested = plan.history.reduce((n, b) => n + b.shares * b.price + b.fee, 0);
+    const shares = plan.history.reduce((n, b) => n + b.shares, 0);
+
+    // 金額指定の買付は「買える最大の株数」。日本株に小数の株は無い。
+    const monthlyShares = price ? Math.floor(plan.amount / price / plan.unit) * plan.unit : null;
+    const used = monthlyShares != null ? monthlyShares * price : null;
+
+    const thisMonth = plan.history.find((b) => b.ym === currentYm()) ?? null;
+    const today = new Date().getDate();
+
+    return {
+      holding: h,
+      price,
+      invested,
+      shares,
+      avg: shares > 0 ? invested / shares : null,
+      count: plan.history.length,
+      monthlyShares,
+      used,
+      leftover: used != null ? plan.amount - used : null,
+      doneThisMonth: !!thisMonth,
+      thisMonth,
+      due: today >= plan.day,
+      daysToDue: today >= plan.day ? 0 : plan.day - today,
+    };
+  }
+
+  /** 「いまの株価と配当が続いたら」の見込み。months か月ぶん積み立てた場合。 */
+  function planProjection(plan, stats, months) {
+    if (!stats.monthlyShares) return null;
+    const h = stats.holding;
+    const addShares = stats.monthlyShares * months;
+    const shares = (h?.shares ?? 0) + addShares;
+    const dps = h?.divPerShare ?? num(h?.quote?.divTtm);
+    const tier = currentTier(h?.yutai, shares);
+    return {
+      months,
+      invested: stats.used * months,
+      addShares,
+      shares,
+      div: dps != null ? dps * shares : null,
+      tier,
+    };
+  }
+
+  /** 次の優待の段まで、いまのペースで何か月かかるか。 */
+  function monthsToNextTier(plan, stats) {
+    const h = stats.holding;
+    if (!h || !stats.monthlyShares) return null;
+    const next = nextTier(h.yutai, h.shares);
+    if (!next) return null;
+    const months = Math.ceil(next.lack / stats.monthlyShares);
+    const at = new Date();
+    at.setMonth(at.getMonth() + months);
+    return { ...next, months, at: `${at.getFullYear()}年${at.getMonth() + 1}月` };
+  }
+
+  function renderPlanPanel() {
+    const rows = plans.filter((p) => matchAccount(p, settings.account));
+    el.planPanel.hidden = rows.length === 0;
+    if (!rows.length) return;
+
+    // 口座ごとの毎月の合計と、NISAの年間枠の消化ぐあい
+    const byAccount = new Map();
+    for (const p of rows.filter((x) => x.active)) {
+      byAccount.set(p.account, (byAccount.get(p.account) ?? 0) + p.amount);
+    }
+    const monthlyTotal = [...byAccount.values()].reduce((a, b) => a + b, 0);
+
+    el.planSummary.innerHTML = `
+<div class="plan-total">
+  <span class="plan-total-value">${esc(yen(monthlyTotal))}<span class="sub">／月</span></span>
+  <span class="plan-total-label">積み立て中 ${rows.filter((p) => p.active).length}件${rows.some((p) => !p.active) ? `（停止中 ${rows.filter((p) => !p.active).length}件）` : ''}・年間 ${esc(yen(monthlyTotal * 12))}</span>
+</div>
+${[...byAccount.entries()].map(([account, amount]) => {
+      const a = ACCOUNTS.find((x) => x.value === account) ?? ACCOUNTS[0];
+      const limit = NISA_ANNUAL_LIMIT[account];
+      const year = amount * 12;
+      const rate = limit ? Math.min(year / limit, 1) : null;
+      return `
+<div class="plan-account">
+  <span class="badge ${a.taxable ? '' : 'ok'}">${esc(a.label)}</span>
+  <span class="num">${esc(yen(amount))}／月（年間 ${esc(yen(year))}）</span>
+  ${limit ? `<span class="plan-limit">年間投資枠 ${esc(yen(limit))} の ${(rate * 100).toFixed(0)}%
+    <span class="gauge-bar"><span class="${year > limit ? 'over' : ''}" style="width:${(rate * 100).toFixed(1)}%"></span></span>
+    ${year > limit ? `<strong class="down">年間枠を ${esc(yen(year - limit))} 超えます</strong>` : ''}</span>` : ''}
+</div>`;
+    }).join('')}`;
+
+    el.planList.innerHTML = rows.map((plan) => planCardHtml(plan)).join('');
+  }
+
+  function planCardHtml(plan) {
+    const s = planStats(plan);
+    const a = ACCOUNTS.find((x) => x.value === plan.account) ?? ACCOUNTS[0];
+    const next = monthsToNextTier(plan, s);
+
+    const status = (() => {
+      if (!plan.active) return '<span class="badge">停止中</span>';
+      if (s.doneThisMonth) return `<span class="badge ok">今月分は記録済み（${esc(s.thisMonth.date)}）</span>`;
+      if (s.due) return '<span class="badge warn">今月分が未記録です</span>';
+      return `<span class="badge accent">次は ${plan.day}日（あと${s.daysToDue}日）</span>`;
+    })();
+
+    const projections = [12, 36, 60]
+      .map((m) => planProjection(plan, s, m))
+      .filter(Boolean)
+      .map((p) => `
+<tr>
+  <td>${p.months / 12}年後</td>
+  <td>${esc(yen(p.invested))}</td>
+  <td>${esc(p.shares.toLocaleString('ja-JP'))}株</td>
+  <td>${esc(yen(p.div))}</td>
+</tr>`).join('');
+
+    return `
+<article class="plan-card${plan.active ? '' : ' is-paused'}" data-plan="${esc(plan.id)}">
+  <div class="plan-head">
+    <h3 class="plan-name">${esc(plan.name || plan.code)}
+      <span class="card-code"><span class="badge ${a.taxable ? '' : 'ok'}">${esc(a.short)}</span> ${esc(plan.code)}</span>
+    </h3>
+    <span class="plan-amount">${esc(yen(plan.amount))}<span class="sub">／月</span></span>
+  </div>
+
+  <div class="plan-status">${status}${plan.memo ? `<span class="plan-memo">${esc(plan.memo)}</span>` : ''}</div>
+
+  <div class="kv kv-4">
+    <div><p class="k">毎月の買付</p><p class="v">${s.monthlyShares == null ? '株価未取得' : `${s.monthlyShares.toLocaleString('ja-JP')}株`}</p></div>
+    <div><p class="k">1回あたり</p><p class="v">${s.used == null ? '—' : esc(yen(s.used))}</p></div>
+    <div><p class="k">余り</p><p class="v">${s.leftover == null ? '—' : esc(yen(s.leftover))}</p></div>
+    <div><p class="k">現在値</p><p class="v">${s.price == null ? '—' : esc(yen(s.price, 1))}</p></div>
+    <div><p class="k">積立回数</p><p class="v">${s.count}回</p></div>
+    <div><p class="k">累計投資額</p><p class="v">${esc(yen(s.invested))}</p></div>
+    <div><p class="k">累計株数</p><p class="v">${s.shares.toLocaleString('ja-JP')}株</p></div>
+    <div><p class="k">平均取得単価</p><p class="v">${s.avg == null ? '—' : esc(yen(s.avg, 2))}</p></div>
+  </div>
+
+  ${next ? `<p class="yutai-next">このペースなら あと${next.months}か月（${esc(next.at)}ごろ）で ${next.lack.toLocaleString('ja-JP')}株ぶん増えて「${esc(next.text.length > 30 ? `${next.text.slice(0, 30)}…` : next.text)}」に届きます</p>` : ''}
+
+  ${projections ? `
+  <details class="fold">
+    <summary>このペースで続けたら（いまの株価・配当が続く前提）</summary>
+    <div class="table-scroll">
+      <table class="sim-table">
+        <thead><tr><th>期間</th><th>投資額</th><th>保有株数</th><th>年間配当</th></tr></thead>
+        <tbody>${projections}</tbody>
+      </table>
+    </div>
+  </details>` : ''}
+
+  <div class="card-actions">
+    ${plan.active ? `<button type="button" class="btn btn-primary" data-plan-act="buy"${s.doneThisMonth ? '' : ''}>買付を記録</button>` : ''}
+    <button type="button" class="btn" data-plan-act="edit">編集</button>
+    <button type="button" class="btn" data-plan-act="toggle">${plan.active ? '停止' : '再開'}</button>
+    <button type="button" class="btn link-danger" data-plan-act="delete">削除</button>
+  </div>
+</article>`;
+  }
+
   function visibleHoldings() {
     const q = el.search.value.trim().toLowerCase();
     let rows = accountFiltered().filter((h) => {
@@ -739,13 +1005,18 @@
       return now + next + note;
     })();
 
-    const sold = h.shares <= 0;
+    // 0株のカードは「売った」か「これから積み立てる」かで意味が違う。
+    const empty = h.shares <= 0;
+    const planned = empty && plans.some((p) => p.code === h.code && p.account === h.account);
+    const emptyBadge = !empty ? '' : planned
+      ? '<span class="badge accent">積立中</span> '
+      : '<span class="badge">売却済み</span> ';
 
     return `
-<article class="card${sold ? ' is-sold' : ''}" data-id="${esc(h.id)}">
+<article class="card${empty ? ' is-sold' : ''}" data-id="${esc(h.id)}">
   <div class="card-top">
     <h3 class="card-title">${esc(h.name || '(名称未設定)')}
-      <span class="card-code">${sold ? '<span class="badge">売却済み</span> ' : ''}<span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span> ${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
+      <span class="card-code">${emptyBadge}<span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span> ${esc(h.code)}${h.quote?.nameEn ? ` ・ ${esc(h.quote.nameEn)}` : ''}</span></h3>
     <div class="price-box">
       <span class="price-now">${c.price == null ? '—' : esc(c.price.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))}<span style="font-size:.7em">円</span></span>
       ${chg == null ? '' : `<span class="price-chg ${plClass(chg)}">${chg > 0 ? '+' : ''}${esc(chg.toLocaleString('ja-JP', { maximumFractionDigits: 1 }))} (${chgRate > 0 ? '+' : ''}${esc((chgRate * 100).toFixed(2))}%)</span>`}
@@ -783,7 +1054,7 @@
   <div class="card-actions">
     <button type="button" class="btn" data-act="sim">シミュレーション</button>
     <button type="button" class="btn" data-act="buy">買い増し</button>
-    ${sold ? '' : '<button type="button" class="btn" data-act="sell">売却</button>'}
+    ${empty ? '' : '<button type="button" class="btn" data-act="sell">売却</button>'}
     <button type="button" class="btn" data-act="refresh">株価更新</button>
     <button type="button" class="btn" data-act="edit">編集</button>
     <button type="button" class="btn link-danger" data-act="delete">削除</button>
@@ -905,7 +1176,7 @@
     const h = id ? holdings.find((x) => x.id === id) : null;
     el.holdingDialogTitle.textContent = h ? '銘柄を編集' : '銘柄を追加';
     el.holdingError.hidden = true;
-    hideSuggest();
+    hideSuggest(el.codeSuggest);
 
     el.codeInput.value = h?.code ?? '';
     el.nameInput.value = h?.name ?? '';
@@ -984,10 +1255,10 @@
 
   // ---------- 証券コードの候補表示 ----------
 
-  function showSuggest() {
-    const hits = searchMaster(el.codeInput.value, 12);
-    if (!hits.length) return hideSuggest();
-    el.codeSuggest.innerHTML = hits.map((m) => `
+  function showSuggest(input, list) {
+    const hits = searchMaster(input.value, 12);
+    if (!hits.length) return hideSuggest(list);
+    list.innerHTML = hits.map((m) => `
 <li role="option">
   <button type="button" data-code="${esc(m.code)}">
     <span class="sg-code">${esc(m.code)}</span>
@@ -995,20 +1266,67 @@
     <span class="sg-mk">${esc(MARKET_LABEL[m.mk] ?? '')}</span>
   </button>
 </li>`).join('');
-    el.codeSuggest.hidden = false;
+    list.hidden = false;
   }
 
-  function hideSuggest() {
-    el.codeSuggest.hidden = true;
-    el.codeSuggest.innerHTML = '';
+  function hideSuggest(list) {
+    list.hidden = true;
+    list.innerHTML = '';
   }
 
-  /** 候補を選んだとき。コードを確定して、銘柄名などを入れ直す。 */
-  function pickSuggest(code) {
-    el.codeInput.value = code;
-    hideSuggest();
-    applyPreset(true);
-    el.priceInput.focus();
+  /**
+   * 証券コードの入力欄に候補リストの動きを付ける。
+   * 銘柄の追加ダイアログと積み立てダイアログの両方で同じものを使う。
+   */
+  function attachCombo(input, list, { onPick, onCommit } = {}) {
+    // 全角で入力されることがあるので半角へ寄せる。
+    input.addEventListener('input', () => {
+      const half = toHalfWidth(input.value);
+      if (half !== input.value) {
+        const pos = input.selectionStart;
+        input.value = half;
+        input.setSelectionRange(pos, pos);
+      }
+      showSuggest(input, list);
+      onCommit?.();
+    });
+
+    input.addEventListener('focus', () => { if (input.value.trim()) showSuggest(input, list); });
+
+    input.addEventListener('blur', () => {
+      // 候補のボタンを押す前に閉じてしまわないよう、少しだけ待つ。
+      setTimeout(() => {
+        hideSuggest(list);
+        input.value = normalizeCode(input.value);
+        onCommit?.();
+      }, 150);
+    });
+
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-code]');
+      if (!btn) return;
+      input.value = btn.dataset.code;
+      hideSuggest(list);
+      onPick?.(btn.dataset.code);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation();
+        hideSuggest(list);
+      } else if (e.key === 'ArrowDown' && !list.hidden) {
+        e.preventDefault();
+        list.querySelector('button')?.focus();
+      }
+    });
+
+    list.addEventListener('keydown', (e) => {
+      const buttons = [...list.querySelectorAll('button')];
+      const i = buttons.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); buttons[Math.min(i + 1, buttons.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); (i <= 0 ? input : buttons[i - 1]).focus(); }
+      else if (e.key === 'Escape') { e.stopPropagation(); hideSuggest(list); input.focus(); }
+    });
   }
 
   function submitHolding(event) {
@@ -1286,6 +1604,207 @@
     toast('売却の記録を取り消しました');
   }
 
+  // ---------- 積み立ての追加・編集 ----------
+
+  function openPlanDialog(id) {
+    editingPlanId = id ?? null;
+    const p = id ? plans.find((x) => x.id === id) : null;
+    el.planDialogTitle.textContent = p ? '積み立てを編集' : '積み立てを追加';
+    el.planError.hidden = true;
+    hideSuggest(el.planCodeSuggest);
+
+    el.planCodeInput.value = p?.code ?? '';
+    el.planAccountInput.value = p?.account
+      ?? (ACCOUNTS.some((a) => a.value === settings.account) ? settings.account : DEFAULT_ACCOUNT);
+    el.planAmountInput.value = p ? String(p.amount) : '';
+    el.planDayInput.value = String(p?.day ?? 1);
+    el.planUnitInput.value = String(p?.unit ?? 1);
+    el.planMemoInput.value = p?.memo ?? '';
+
+    updatePlanPreview();
+    el.planDialog.showModal();
+  }
+
+  function updatePlanPreview() {
+    const code = normalizeCode(el.planCodeInput.value);
+    const amount = num(el.planAmountInput.value);
+    const unit = Math.max(1, Math.floor(num(el.planUnitInput.value) ?? 1));
+    const name = nameOfCode(code);
+    if (!code || !amount) { el.planPreview.innerHTML = ''; return; }
+
+    const account = el.planAccountInput.value;
+    const h = holdings.find((x) => x.code === code && x.account === account)
+      ?? holdings.find((x) => x.code === code);
+    const price = num(h?.quote?.price);
+    const shares = price ? Math.floor(amount / price / unit) * unit : null;
+
+    el.planPreview.innerHTML = `
+<p class="hint">
+  ${name ? `${esc(name)}（${esc(code)}）を ` : ''}毎月 ${esc(yen(amount))}／年間 ${esc(yen(amount * 12))}。
+  ${price == null
+    ? '株価が未取得のため、毎月の株数は「株価を更新」したあとに表示されます。'
+    : shares > 0
+      ? `いまの株価 ${esc(yen(price, 1))} なら毎月 <strong>${shares.toLocaleString('ja-JP')}株</strong>（${esc(yen(shares * price))}・余り ${esc(yen(amount - shares * price))}）。`
+      : `いまの株価 ${esc(yen(price, 1))} では ${unit}株ぶんに届きません（あと ${esc(yen(price * unit - amount))} 必要です）。`}
+  ${NISA_ANNUAL_LIMIT[account] ? `年間 ${esc(yen(amount * 12))} は、この口座の年間投資枠 ${esc(yen(NISA_ANNUAL_LIMIT[account]))} の ${((amount * 12 / NISA_ANNUAL_LIMIT[account]) * 100).toFixed(0)}% です。` : ''}
+</p>`;
+  }
+
+  function submitPlan(event) {
+    const code = normalizeCode(el.planCodeInput.value);
+    const amount = num(el.planAmountInput.value);
+    const account = el.planAccountInput.value;
+
+    const fail = (message) => {
+      event.preventDefault();
+      el.planError.textContent = message;
+      el.planError.hidden = false;
+    };
+
+    if (!code) return fail('証券コードを入力してください。');
+    if (amount == null || amount <= 0) return fail('毎月の金額を入力してください。');
+    const dup = plans.find((p) => p.code === code && p.account === account && p.id !== editingPlanId);
+    if (dup) {
+      const label = ACCOUNTS.find((a) => a.value === account)?.label ?? '';
+      return fail(`${code} の${label}での積み立てはすでに登録されています。`);
+    }
+
+    const base = editingPlanId ? plans.find((p) => p.id === editingPlanId) : null;
+    const next = normalizePlan({
+      ...(base ?? {}),
+      id: base?.id,
+      code,
+      name: nameOfCode(code) || base?.name || code,
+      account,
+      amount,
+      day: num(el.planDayInput.value),
+      unit: num(el.planUnitInput.value),
+      memo: el.planMemoInput.value.trim(),
+      history: base?.history ?? [],
+      active: base ? base.active : true,
+      createdAt: base?.createdAt,
+      updatedAt: Date.now(),
+    });
+
+    if (base) plans = plans.map((p) => (p.id === base.id ? next : p));
+    else plans.push(next);
+
+    // 積立先の銘柄を0株で用意しておくと、株価・優待・配当がそのまま使える。
+    const created = !holdings.some((x) => x.code === code && x.account === account);
+    const h = holdingForPlan(next, true);
+
+    savePlans();
+    save();
+    render();
+    toast(base ? '積み立てを保存しました' : `${next.name || next.code} の積み立てを追加しました`);
+    if (created && h && !h.quote) requestQuotes([h.id], { quiet: true });
+  }
+
+  // ---------- 積み立ての買付を記録 ----------
+
+  function openPlanBuyDialog(id) {
+    const plan = plans.find((p) => p.id === id);
+    if (!plan) return;
+    planBuyTargetId = id;
+    el.planBuyError.hidden = true;
+
+    const s = planStats(plan);
+    const a = ACCOUNTS.find((x) => x.value === plan.account) ?? ACCOUNTS[0];
+    el.planBuyTargetName.textContent =
+      `${plan.name || plan.code}［${a.label}］（毎月 ${yen(plan.amount)}・${plan.unit}株単位）`;
+
+    el.planBuyAmount.value = String(plan.amount);
+    el.planBuyPrice.value = s.price != null ? String(s.price) : '';
+    el.planBuyFee.value = '';
+    el.planBuyDate.value = todayIso();
+    el.planBuyFromCash.checked = true;
+
+    updatePlanBuyPreview();
+    el.planBuyDialog.showModal();
+  }
+
+  function calcPlanBuy(plan) {
+    const amount = num(el.planBuyAmount.value);
+    const price = num(el.planBuyPrice.value);
+    const fee = Math.max(0, num(el.planBuyFee.value) ?? 0);
+    if (!plan || amount == null || amount <= 0 || price == null || price <= 0) return null;
+
+    const shares = Math.floor(amount / price / plan.unit) * plan.unit;
+    const cost = shares * price;
+    return { amount, price, fee, shares, cost, payment: cost + fee, leftover: amount - cost };
+  }
+
+  function updatePlanBuyPreview() {
+    const plan = plans.find((p) => p.id === planBuyTargetId);
+    const c = calcPlanBuy(plan);
+    if (!c) { el.planBuyPreview.innerHTML = ''; return; }
+
+    const h = holdingForPlan(plan);
+    const money = cash[plan.account] ?? 0;
+    const newShares = (h?.shares ?? 0) + c.shares;
+    const newAvg = newShares > 0
+      ? ((h?.avgPrice ?? 0) * (h?.shares ?? 0) + c.cost + c.fee) / newShares
+      : 0;
+
+    const row = (label, value, klass) => `<tr><td>${esc(label)}</td><td class="${klass ?? ''}">${esc(value)}</td></tr>`;
+
+    el.planBuyPreview.innerHTML = `
+<table class="sim-table">
+  <tbody>
+    ${row('買える株数', c.shares > 0
+      ? `${c.shares.toLocaleString('ja-JP')}株（${yen(c.price, 1)} × ${c.shares}）`
+      : `0株（${yen(c.price * plan.unit)} 必要）`, c.shares > 0 ? '' : 'down')}
+    ${row('買付金額', yen(c.cost))}
+    ${c.fee > 0 ? row('手数料', `+${yen(c.fee)}`) : ''}
+    ${row('支払額', yen(c.payment))}
+    ${row('余り（買えなかったぶん）', yen(c.leftover))}
+    ${row('買付後の保有', `${newShares.toLocaleString('ja-JP')}株・平均 ${yen(newAvg, 2)}`)}
+    ${el.planBuyFromCash.checked && money > 0
+      ? row('投資余力', `${yen(money)} → ${money - c.payment < 0 ? `${yen(0)}（${yen(c.payment - money)}不足）` : yen(money - c.payment)}`)
+      : ''}
+  </tbody>
+</table>`;
+  }
+
+  function submitPlanBuy(event) {
+    const plan = plans.find((p) => p.id === planBuyTargetId);
+    const c = calcPlanBuy(plan);
+    const fail = (message) => {
+      event.preventDefault();
+      el.planBuyError.textContent = message;
+      el.planBuyError.hidden = false;
+    };
+    if (!plan || !c) return fail('買付金額と約定単価を入力してください。');
+    if (c.shares <= 0) return fail(`この金額では ${plan.unit}株ぶんに届きません（${yen(c.price * plan.unit)} 必要です）。`);
+
+    const h = holdingForPlan(plan, true);
+    const shares = h.shares + c.shares;
+    h.avgPrice = Math.round(((h.avgPrice * h.shares + c.cost + c.fee) / shares) * 100) / 100;
+    h.shares = shares;
+    h.updatedAt = Date.now();
+
+    const date = el.planBuyDate.value || todayIso();
+    plan.history.push(normalizePlanBuy({
+      ym: date.slice(0, 7), date, shares: c.shares, price: c.price, fee: c.fee, amount: c.amount,
+    }));
+    plan.history.sort((a, b) => a.date.localeCompare(b.date));
+    plan.updatedAt = Date.now();
+
+    let short = 0;
+    if (el.planBuyFromCash.checked) {
+      const money = cash[plan.account] ?? 0;
+      short = Math.max(0, c.payment - money);
+      cash[plan.account] = Math.max(0, money - c.payment);
+      saveCash();
+    }
+
+    savePlans();
+    save();
+    render();
+    toast(`${plan.name || plan.code} を ${c.shares.toLocaleString('ja-JP')}株 積み立てました`
+      + (short > 0 ? `（余力が ${yen(short)} 足りなかったので0にしました）` : ''));
+  }
+
   // ---------- 投資余力 ----------
 
   function openCashDialog() {
@@ -1450,12 +1969,13 @@ ${yutaiLine}
   function exportJson() {
     const payload = {
       app: 'jp-stock-portfolio',
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       settings: { taxRate: settings.taxRate },
       holdings,
       cash,
       sales,
+      plans,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1511,11 +2031,23 @@ ${yutaiLine}
         saveSales();
       }
 
+      let plansAdded = 0;
+      if (Array.isArray(parsed.plans)) {
+        for (const raw of parsed.plans) {
+          const p = normalizePlan(raw);
+          if (plans.some((x) => x.code === p.code && x.account === p.account)) continue;
+          plans.push(p);
+          plansAdded++;
+        }
+        savePlans();
+      }
+
       save();
       saveSettings();
       render();
       toast(`読み込みました（追加 ${added}件 / 更新 ${updated}件`
         + (salesAdded ? ` / 売却 ${salesAdded}件` : '')
+        + (plansAdded ? ` / 積み立て ${plansAdded}件` : '')
         + (cashLoaded ? ' / 投資余力も反映' : '') + '）');
     } catch (err) {
       console.error(err);
@@ -1572,6 +2104,26 @@ ${yutaiLine}
     return holder ? holder.dataset.id : null;
   }
 
+  /**
+   * メニューの開く向きを決める。
+   * 既定は右揃え（左へ開く）だが、⋯ボタンが画面の左寄りにあると
+   * そのままでは左へはみ出して見切れるので、その場合だけ左揃えにする。
+   */
+  function placeMenu() {
+    const list = el.menuList;
+    list.style.left = '';
+    list.style.right = '0';
+    const rect = list.getBoundingClientRect();
+    if (rect.left < 8) {
+      list.style.right = 'auto';
+      list.style.left = '0';
+      // 左揃えにしても右へはみ出すなら、画面内へ押し戻す。
+      const shifted = list.getBoundingClientRect();
+      const over = shifted.right - (document.documentElement.clientWidth - 8);
+      if (over > 0) list.style.left = `${-over}px`;
+    }
+  }
+
   // ---------- イベント ----------
 
   function bind() {
@@ -1592,6 +2144,7 @@ ${yutaiLine}
       const open = el.menuList.hidden;
       el.menuList.hidden = !open;
       el.menuBtn.setAttribute('aria-expanded', String(open));
+      if (open) placeMenu();
     });
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.menu') && !el.menuList.hidden) {
@@ -1609,12 +2162,14 @@ ${yutaiLine}
     });
     $('#sampleBtn').addEventListener('click', addSample);
     $('#clearBtn').addEventListener('click', () => {
-      if (!confirm('登録した銘柄・売却履歴・投資余力をすべて削除します。よろしいですか？')) return;
+      if (!confirm('登録した銘柄・売却履歴・積み立て設定・投資余力をすべて削除します。よろしいですか？')) return;
       holdings = [];
       sales = [];
+      plans = [];
       cash = normalizeCash({});
       save();
       saveSales();
+      savePlans();
       saveCash();
       render();
       toast('すべて削除しました');
@@ -1692,48 +2247,55 @@ ${yutaiLine}
 
     // 銘柄ダイアログ
     el.holdingForm.addEventListener('submit', submitHolding);
-    // 全角で入力されることがあるので半角へ寄せる（英字は候補を出したあとに大文字化する）。
-    el.codeInput.addEventListener('input', () => {
-      const half = toHalfWidth(el.codeInput.value);
-      if (half !== el.codeInput.value) {
-        const pos = el.codeInput.selectionStart;
-        el.codeInput.value = half;
-        el.codeInput.setSelectionRange(pos, pos);
-      }
-      showSuggest();
-    });
-    el.codeInput.addEventListener('focus', () => { if (el.codeInput.value.trim()) showSuggest(); });
-    el.codeInput.addEventListener('change', () => applyPreset(false));
-    el.codeInput.addEventListener('blur', () => {
-      // 候補のボタンを押す前に閉じてしまわないよう、少しだけ待つ。
-      setTimeout(() => {
-        hideSuggest();
-        // 「7203」のようにコードだけ入れて確定したときは大文字に揃えて補完する。
-        el.codeInput.value = normalizeCode(el.codeInput.value);
-        applyPreset(false);
-      }, 150);
-    });
-    el.codeSuggest.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-code]');
-      if (btn) pickSuggest(btn.dataset.code);
-    });
-    el.codeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !el.codeSuggest.hidden) {
-        e.stopPropagation();
-        hideSuggest();
-      } else if (e.key === 'ArrowDown' && !el.codeSuggest.hidden) {
-        e.preventDefault();
-        el.codeSuggest.querySelector('button')?.focus();
-      }
-    });
-    el.codeSuggest.addEventListener('keydown', (e) => {
-      const buttons = [...el.codeSuggest.querySelectorAll('button')];
-      const i = buttons.indexOf(document.activeElement);
-      if (e.key === 'ArrowDown') { e.preventDefault(); buttons[Math.min(i + 1, buttons.length - 1)]?.focus(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); (i <= 0 ? el.codeInput : buttons[i - 1]).focus(); }
-      else if (e.key === 'Escape') { e.stopPropagation(); hideSuggest(); el.codeInput.focus(); }
+    attachCombo(el.codeInput, el.codeSuggest, {
+      onPick: () => { applyPreset(true); el.priceInput.focus(); },
+      onCommit: () => applyPreset(false),
     });
     el.addTierBtn.addEventListener('click', () => addTierRow(null));
+
+    // 積み立て
+    el.addPlanBtn.addEventListener('click', () => openPlanDialog(null));
+    el.planForm.addEventListener('submit', submitPlan);
+    attachCombo(el.planCodeInput, el.planCodeSuggest, {
+      onPick: () => { updatePlanPreview(); el.planAmountInput.focus(); },
+      onCommit: updatePlanPreview,
+    });
+    for (const node of [el.planAmountInput, el.planUnitInput, el.planDayInput]) {
+      node.addEventListener('input', updatePlanPreview);
+    }
+    el.planAccountInput.addEventListener('change', updatePlanPreview);
+
+    el.planBuyForm.addEventListener('submit', submitPlanBuy);
+    for (const node of [el.planBuyAmount, el.planBuyPrice, el.planBuyFee]) {
+      node.addEventListener('input', updatePlanBuyPreview);
+    }
+    el.planBuyFromCash.addEventListener('change', updatePlanBuyPreview);
+
+    el.planList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-plan-act]');
+      if (!btn) return;
+      const id = btn.closest('[data-plan]')?.dataset.plan;
+      const plan = plans.find((p) => p.id === id);
+      if (!plan) return;
+      switch (btn.dataset.planAct) {
+        case 'buy': openPlanBuyDialog(id); break;
+        case 'edit': openPlanDialog(id); break;
+        case 'toggle':
+          plan.active = !plan.active;
+          plan.updatedAt = Date.now();
+          savePlans();
+          render();
+          toast(plan.active ? '積み立てを再開しました' : '積み立てを停止しました');
+          break;
+        case 'delete':
+          if (!confirm(`${plan.name || plan.code} の積み立て設定を削除しますか？\n（買付の記録と保有株数はそのまま残ります）`)) return;
+          plans = plans.filter((p) => p.id !== id);
+          savePlans();
+          render();
+          toast('積み立て設定を削除しました');
+          break;
+      }
+    });
 
     // 買い増しダイアログ
     el.buyForm.addEventListener('submit', submitBuy);

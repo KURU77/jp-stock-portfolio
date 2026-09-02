@@ -175,11 +175,15 @@ body {
 /* ---------- menu ---------- */
 .menu { position: relative; }
 
+/* 既定は右揃え（ボタンの右端に合わせて左へ開く）。
+   ボタンが画面の左寄りにあると左へはみ出すので、開くときに app.js が
+   left / right を入れ替える。幅も画面内に収まるように抑えている。 */
 .menu-list {
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
   min-width: 200px;
+  max-width: min(260px, calc(100vw - 1.5rem));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1109,3 +1113,73 @@ body {
 .sell-preview { margin-top: .25rem; }
 .sell-preview .sim-table td:first-child { color: var(--text-muted); font-size: .78rem; }
 .sell-preview .sim-table td:last-child { text-align: right; font-weight: 600; }
+
+/* ---------- 積み立て ---------- */
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin-bottom: .8rem;
+}
+
+.panel-head .panel-title { margin: 0; }
+.panel-head .btn { margin-left: auto; }
+
+.plan-summary {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-bottom: .9rem;
+  padding-bottom: .8rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-total { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.plan-total-value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.plan-total-value .sub { font-size: .8rem; font-weight: 600; margin-left: .1rem; }
+.plan-total-label { font-size: .78rem; color: var(--text-muted); }
+
+.plan-account {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+
+.plan-limit { display: flex; align-items: center; gap: .5rem; flex: 1 1 14rem; min-width: 0; flex-wrap: wrap; }
+.plan-limit .gauge-bar { flex: 1 1 6rem; min-width: 4rem; height: 8px; }
+
+.plan-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .9rem; }
+
+.plan-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  min-width: 0;
+}
+
+.plan-card.is-paused { opacity: .65; }
+
+.plan-head { display: flex; align-items: start; gap: .6rem; }
+.plan-name { margin: 0; font-size: 1rem; font-weight: 700; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.plan-amount { font-size: 1.05rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plan-amount .sub { font-size: .72rem; font-weight: 600; color: var(--text-muted); }
+
+.plan-status { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.plan-memo { font-size: .75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+.plan-card .kv { background: var(--surface); }
+.plan-card .card-actions { margin-top: .1rem; }
+.plan-preview { margin-top: -.3rem; }
+
+@media (max-width: 560px) {
+  .plan-list { grid-template-columns: 1fr; }
+  .plan-head .btn { margin-left: 0; width: 100%; }
+}

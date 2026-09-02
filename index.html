@@ -122,6 +122,19 @@
     <ul class="yutai-list" id="yutaiList"></ul>
   </section>
 
+  <section class="panel" id="planPanel" aria-label="積み立て設定" hidden>
+    <div class="panel-head">
+      <h2 class="panel-title">毎月の積み立て</h2>
+      <button type="button" id="addPlanBtn" class="btn btn-sm">＋ 積み立てを追加</button>
+    </div>
+    <div class="plan-summary" id="planSummary"></div>
+    <div class="plan-list" id="planList"></div>
+    <p class="note">
+      金額指定の積み立ては「その月の株価で買える最大の株数」を買う形で計算しています（日本株に小数の株はないため）。
+      余った金額は繰り越さず、買付額と一緒に表示します。実際の約定価格・手数料は証券会社の明細で確認してください。
+    </p>
+  </section>
+
   <section class="panel" id="salesPanel" aria-label="売却履歴" hidden>
     <h2 class="panel-title">売却履歴（実現損益）</h2>
     <div class="stats stats-inline" id="salesTotals"></div>
@@ -300,6 +313,102 @@
     <div class="dialog-actions">
       <button type="button" class="btn" data-close>キャンセル</button>
       <button type="submit" class="btn btn-primary">売却を記録</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 積み立ての設定 ---------- -->
+<dialog id="planDialog" class="dialog">
+  <form id="planForm" method="dialog">
+    <h2 id="planDialogTitle" class="dialog-title" tabindex="-1" autofocus>積み立てを追加</h2>
+
+    <div class="field">
+      <label class="field-label" for="planCodeInput">証券コード / 銘柄名で検索<em>必須</em></label>
+      <div class="combo">
+        <input type="text" id="planCodeInput" inputmode="text" autocomplete="off"
+               autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="24"
+               placeholder="7203 / 186A / ispace" required>
+        <ul class="suggest" id="planCodeSuggest" role="listbox" hidden></ul>
+      </div>
+    </div>
+
+    <label class="field">
+      <span>口座</span>
+      <select id="planAccountInput">
+        <option value="tokutei">特定口座</option>
+        <option value="nisa-growth">NISA（成長投資枠）</option>
+        <option value="nisa-tsumitate">NISA（つみたて投資枠）</option>
+        <option value="ippan">一般口座</option>
+      </select>
+    </label>
+
+    <div class="row">
+      <label class="field">
+        <span>毎月の金額（円）<em>必須</em></span>
+        <input type="number" id="planAmountInput" min="1" step="1" inputmode="numeric" placeholder="30000" required>
+      </label>
+      <label class="field field-sm">
+        <span>買付日（毎月）</span>
+        <input type="number" id="planDayInput" min="1" max="28" step="1" inputmode="numeric" value="1">
+      </label>
+      <label class="field field-sm">
+        <span>買付単位（株）</span>
+        <input type="number" id="planUnitInput" min="1" step="1" inputmode="numeric" value="1">
+        <small class="hint">単元未満株（S株など）なら1株</small>
+      </label>
+    </div>
+
+    <label class="field">
+      <span>メモ</span>
+      <input type="text" id="planMemoInput" autocomplete="off" placeholder="SBIのかぶツミ など">
+    </label>
+
+    <div class="plan-preview" id="planPreview"></div>
+    <p class="form-error" id="planError" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 積み立ての買付を記録 ---------- -->
+<dialog id="planBuyDialog" class="dialog">
+  <form id="planBuyForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>積み立ての買付を記録</h2>
+    <p class="dialog-sub" id="planBuyTargetName"></p>
+
+    <div class="row">
+      <label class="field">
+        <span>買付金額（円）<em>必須</em></span>
+        <input type="number" id="planBuyAmount" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <label class="field">
+        <span>約定単価（円）<em>必須</em></span>
+        <input type="number" id="planBuyPrice" min="0" step="0.1" inputmode="decimal" required>
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="field field-sm">
+        <span>手数料（円）</span>
+        <input type="number" id="planBuyFee" min="0" step="1" inputmode="decimal" placeholder="0">
+      </label>
+      <label class="field">
+        <span>買付日</span>
+        <input type="date" id="planBuyDate">
+      </label>
+    </div>
+
+    <label class="check"><input type="checkbox" id="planBuyFromCash" checked> 支払額を投資余力から差し引く</label>
+
+    <div class="sell-preview" id="planBuyPreview"></div>
+    <p class="form-error" id="planBuyError" hidden></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>キャンセル</button>
+      <button type="submit" class="btn btn-primary">買付を記録</button>
     </div>
   </form>
 </dialog>
