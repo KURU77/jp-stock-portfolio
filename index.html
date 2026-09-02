@@ -34,6 +34,7 @@
       <div class="menu">
         <button type="button" id="menuBtn" class="icon-btn" title="メニュー" aria-label="メニュー" aria-haspopup="true" aria-expanded="false">⋯</button>
         <div class="menu-list" id="menuList" role="menu" hidden>
+          <a href="review.html" role="menuitem">🤖 AIレビュー</a>
           <button type="button" id="menuAddPlanBtn" role="menuitem">積み立てを追加</button>
           <button type="button" id="cashBtn" role="menuitem">投資余力を入力</button>
           <button type="button" id="settingsBtn" role="menuitem">設定</button>
@@ -210,6 +211,12 @@
       </label>
     </div>
 
+    <label class="field">
+      <span>取得日（この銘柄を買った日）</span>
+      <input type="date" id="sinceInput">
+      <small class="hint">グラフで「まだ持っていなかった期間」を除くために使います。だいたいで構いません。</small>
+    </label>
+
     <div class="row">
       <label class="field">
         <span>1株あたり年間配当（円）</span>
@@ -263,6 +270,10 @@
       <label class="field field-sm">
         <span>手数料（円）</span>
         <input type="number" id="buyFee" min="0" step="1" inputmode="decimal" placeholder="0">
+      </label>
+      <label class="field">
+        <span>約定日</span>
+        <input type="date" id="buyDate">
       </label>
     </div>
     <label class="check"><input type="checkbox" id="buyFromCash" checked> 支払額を投資余力から差し引く</label>

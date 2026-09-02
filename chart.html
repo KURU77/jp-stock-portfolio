@@ -28,6 +28,7 @@
     <div class="header-actions">
       <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
       <a class="btn" href="./">← ポートフォリオ</a>
+      <a class="btn" href="review.html">🤖 AIレビュー</a>
       <button type="button" id="reloadBtn" class="btn btn-primary">1年の推移を取得</button>
     </div>
   </div>
@@ -51,6 +52,7 @@
         <button type="button" data-range="250" class="is-on" aria-pressed="true">1年</button>
       </div>
     </div>
+    <label class="check date-aware"><input type="checkbox" id="dateAware" checked> 取得日を反映する（買う前の値動きを含めない）</label>
     <div id="historyChart" class="chart-box"></div>
     <div class="chart-tools">
       <div class="chart-zoom" role="group" aria-label="拡大・縮小">

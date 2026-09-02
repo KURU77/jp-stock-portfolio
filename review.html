@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AIレビュー｜日本株ポートフォリオ</title>
+<meta name="description" content="Gemini API に自分のポートフォリオの要約を渡して、分散・配当・NISAの使い方などの気づきを整理してもらうページ。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AIレビュー">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">🤖</span> AIレビュー</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <a class="btn" href="./">← ポートフォリオ</a>
+      <a class="btn" href="chart.html">📊 グラフ</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="panel panel-tight">
+    <h2 class="panel-title">Gemini API の設定</h2>
+    <p class="dialog-text">
+      Google AI Studio で発行した<strong>自分のAPIキー</strong>を使います。キーはこの端末のブラウザ内（localStorage）にだけ保存され、
+      通信先は Google の API だけです（このアプリの作者や中継サービスには渡りません）。
+    </p>
+    <div class="row">
+      <label class="field">
+        <span>APIキー</span>
+        <input type="password" id="apiKey" autocomplete="off" spellcheck="false" placeholder="AIza…">
+      </label>
+      <label class="field field-sm">
+        <span>モデル</span>
+        <input type="text" id="model" list="modelOptions" autocomplete="off" spellcheck="false" placeholder="gemini-2.5-flash">
+        <datalist id="modelOptions"></datalist>
+      </label>
+    </div>
+    <div class="row row-actions">
+      <button type="button" id="saveKeyBtn" class="btn">キーとモデルを保存</button>
+      <button type="button" id="listModelsBtn" class="btn">使えるモデルを取得</button>
+      <button type="button" id="clearKeyBtn" class="btn link-danger">キーを削除</button>
+    </div>
+    <p class="note">
+      ブラウザに保存する以上、この端末を使える人はキーを読み出せます。
+      <strong>用途を限定した使い捨てのキー</strong>を使い、不要になったら Google AI Studio 側でも削除してください。
+      APIの利用料はご自身の Google アカウントに請求されます（無料枠あり）。
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">送信する内容</h2>
+      <button type="button" id="reviewBtn" class="btn btn-primary">この内容でレビューしてもらう</button>
+    </div>
+    <div class="review-options">
+      <label class="check"><input type="checkbox" id="optNames" checked> 銘柄名を送る（オフにすると証券コードだけ）</label>
+      <label class="check"><input type="checkbox" id="optAmounts" checked> 金額を送る（オフにすると構成比・利回りだけ）</label>
+      <label class="check"><input type="checkbox" id="optPlans" checked> 積み立てと投資余力も送る</label>
+    </div>
+    <pre class="review-prompt" id="promptPreview"></pre>
+    <p class="note">
+      上に表示されているテキストが、そのまま Google の Gemini API に送られます。送りたくない情報があれば、
+      チェックを外すか、ポートフォリオ側のメモを消してから実行してください。
+    </p>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <h2 class="panel-title">レビュー結果</h2>
+    <div class="review-result" id="result"></div>
+    <p class="note" id="resultMeta"></p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">この機能について</h2>
+    <ul class="dialog-list">
+      <li>出てくる文章は <strong>生成AIの出力</strong>です。事実と違うこと（銘柄の内容、制度の説明など）が混ざることがあります。</li>
+      <li><strong>投資助言ではありません。</strong>売買の判断はご自身の責任でお願いします。</li>
+      <li>プロンプトでは「売買の推奨はしない」「気づきの整理にとどめる」ようお願いしています。</li>
+      <li>送信するのは要約したテキストだけで、APIキー以外の設定やブラウザの保存データは送りません。</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      本アプリは投資助言を行うものではありません。<a href="privacy.html">プライバシーについて</a>
+    </p>
+  </div>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/review.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>

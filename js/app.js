@@ -13,6 +13,7 @@
   const SALES_KEY = 'jp-stock-portfolio.sales.v1';
   const PLANS_KEY = 'jp-stock-portfolio.plans.v1';
   const SNAPSHOTS_KEY = 'jp-stock-portfolio.snapshots.v1';
+  const BUYS_KEY = 'jp-stock-portfolio.buys.v1';
 
   /** NISAの年間投資枠。積み立ての年額がどれくらい使うかの目安に使う。 */
   const NISA_ANNUAL_LIMIT = { 'nisa-growth': 2_400_000, 'nisa-tsumitate': 1_200_000 };
@@ -73,6 +74,7 @@
     priceInput: $('#priceInput'),
     sharesInput: $('#sharesInput'),
     unitInput: $('#unitInput'),
+    sinceInput: $('#sinceInput'),
     divInput: $('#divInput'),
     monthsInput: $('#monthsInput'),
     memoInput: $('#memoInput'),
@@ -86,6 +88,7 @@
     buyShares: $('#buyShares'),
     buyPrice: $('#buyPrice'),
     buyFee: $('#buyFee'),
+    buyDate: $('#buyDate'),
     buyFromCash: $('#buyFromCash'),
     buyPreview: $('#buyPreview'),
     // 売却
@@ -162,6 +165,8 @@
   let cash = {};
   /** @type {Array<object>} 売却の記録（実現損益） */
   let sales = [];
+  /** @type {Array<object>} 買付の記録（投資日をグラフに反映するために使う） */
+  let buys = [];
   /** @type {Array<object>} 毎月の積み立て設定 */
   let plans = [];
   let editingPlanId = null;
@@ -284,6 +289,11 @@
       const raw = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
       plans = Array.isArray(raw) ? raw.map(normalizePlan) : [];
     } catch { plans = []; }
+
+    try {
+      const raw = JSON.parse(localStorage.getItem(BUYS_KEY) || '[]');
+      buys = Array.isArray(raw) ? raw.map(normalizeBuy) : [];
+    } catch { buys = []; }
   }
 
   function normalizePlan(raw) {
@@ -319,6 +329,8 @@
       amount: Math.max(0, num(h.amount) ?? 0),
     };
   }
+
+  const saveBuys = () => localStorage.setItem(BUYS_KEY, JSON.stringify(buys));
 
   const savePlans = () => localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
 
@@ -422,9 +434,38 @@
       months: Array.isArray(h.months) ? h.months.map((m) => Math.round(num(m) ?? 0)).filter((m) => m >= 1 && m <= 12) : [],
       yutai: normalizeYutai(h.yutai),
       memo: String(h.memo ?? ''),
+      // 取得日。グラフで「持っていなかった期間」を除くために使う。
+      // 旧データは登録した日を取得日とみなす。
+      since: typeof h.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(h.since)
+        ? h.since
+        : isoOf(Number(h.createdAt) || Date.now()),
       quote: h.quote && typeof h.quote === 'object' ? h.quote : null,
       createdAt: Number(h.createdAt) || Date.now(),
       updatedAt: Number(h.updatedAt) || Date.now(),
+    };
+  }
+
+  /** ミリ秒 → 'YYYY-MM-DD'（ローカル時刻で） */
+  function isoOf(ms) {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  /** 買付の記録（グラフで投資日を反映するために使う） */
+  function normalizeBuy(raw) {
+    const b = raw && typeof raw === 'object' ? raw : {};
+    return {
+      id: typeof b.id === 'string' && b.id ? b.id : newId(),
+      holdingId: typeof b.holdingId === 'string' ? b.holdingId : '',
+      code: normalizeCode(b.code),
+      name: String(b.name ?? ''),
+      account: ACCOUNTS.some((a) => a.value === b.account) ? b.account : DEFAULT_ACCOUNT,
+      date: typeof b.date === 'string' && b.date ? b.date : todayIso(),
+      shares: Math.max(0, Math.floor(num(b.shares) ?? 0)),
+      price: Math.max(0, num(b.price) ?? 0),
+      fee: Math.max(0, num(b.fee) ?? 0),
+      kind: b.kind === 'plan' ? 'plan' : 'add',
+      createdAt: Number(b.createdAt) || Date.now(),
     };
   }
 
@@ -1072,6 +1113,8 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     <div><p class="k">損益率</p><p class="v ${plClass(c.pl)}">${c.plRate == null ? '—' : `${c.plRate > 0 ? '+' : ''}${esc((c.plRate * 100).toFixed(2))}%`}</p></div>
   </div>
 
+  <p class="card-since">取得日 ${esc(h.since)}${buys.some((b) => b.holdingId === h.id) ? `（買付の記録 ${buys.filter((b) => b.holdingId === h.id).length}件）` : ''}</p>
+
   <div class="section-mini">
     <p class="mini-title">年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}${h.divPerShare != null ? '<span class="badge accent">手入力</span>' : ''}</p>
     <div class="dividend-line">
@@ -1228,6 +1271,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     el.divInput.value = h?.divPerShare != null ? String(h.divPerShare) : '';
     el.monthsInput.value = (h?.months ?? []).join(',');
     el.memoInput.value = h?.memo ?? '';
+    el.sinceInput.value = h?.since ?? todayIso();
     el.yutaiNoteInput.value = h?.yutai?.note ?? '';
     renderTierRows(h?.yutai?.tiers ?? []);
 
@@ -1404,6 +1448,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
         ? { tiers, note: yutaiNote, asOf: base?.yutai?.asOf ?? '', abolished: base?.yutai?.abolished ?? false }
         : null,
       memo: el.memoInput.value.trim(),
+      since: el.sinceInput.value || base?.since,
       quote: base?.quote ?? null,
       createdAt: base?.createdAt,
       updatedAt: Date.now(),
@@ -1436,6 +1481,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     el.buyShares.value = presetShares != null ? String(presetShares) : String(h.unit || 100);
     el.buyPrice.value = presetPrice != null ? String(Math.round(presetPrice * 10) / 10) : (h.quote?.price != null ? String(h.quote.price) : '');
     el.buyFee.value = '';
+    el.buyDate.value = todayIso();
     el.buyFromCash.checked = true;
     updateBuyPreview();
     el.buyDialog.showModal();
@@ -1472,6 +1518,14 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     h.avgPrice = Math.round(((h.avgPrice * h.shares + addPrice * addShares + fee) / shares) * 100) / 100;
     h.shares = shares;
     h.updatedAt = Date.now();
+
+    // 投資日をグラフに反映するため、買付を日付つきで残す。
+    buys.push(normalizeBuy({
+      holdingId: h.id, code: h.code, name: h.name, account: h.account,
+      date: el.buyDate.value || todayIso(),
+      shares: Math.floor(addShares), price: addPrice, fee, kind: 'add',
+    }));
+    saveBuys();
 
     let short = 0;
     if (el.buyFromCash.checked) {
@@ -1826,6 +1880,11 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     plan.history.push(normalizePlanBuy({
       ym: date.slice(0, 7), date, shares: c.shares, price: c.price, fee: c.fee, amount: c.amount,
     }));
+    buys.push(normalizeBuy({
+      holdingId: h.id, code: h.code, name: h.name, account: h.account,
+      date, shares: c.shares, price: c.price, fee: c.fee, kind: 'plan',
+    }));
+    saveBuys();
     plan.history.sort((a, b) => a.date.localeCompare(b.date));
     plan.updatedAt = Date.now();
 
@@ -2008,13 +2067,14 @@ ${yutaiLine}
   function exportJson() {
     const payload = {
       app: 'jp-stock-portfolio',
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
       settings: { taxRate: settings.taxRate },
       holdings,
       cash,
       sales,
       plans,
+      buys,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -2068,6 +2128,17 @@ ${yutaiLine}
           salesAdded++;
         }
         saveSales();
+      }
+
+      if (Array.isArray(parsed.buys)) {
+        const known = new Set(buys.map((b) => b.id));
+        for (const raw of parsed.buys) {
+          const b = normalizeBuy(raw);
+          if (known.has(b.id)) continue;
+          buys.push(b);
+          known.add(b.id);
+        }
+        saveBuys();
       }
 
       let plansAdded = 0;
@@ -2205,10 +2276,12 @@ ${yutaiLine}
       holdings = [];
       sales = [];
       plans = [];
+      buys = [];
       cash = normalizeCash({});
       save();
       saveSales();
       savePlans();
+      saveBuys();
       saveCash();
       render();
       toast('すべて削除しました');

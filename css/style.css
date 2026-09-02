@@ -1392,3 +1392,47 @@ body {
 
 .chart-window strong { font-variant-numeric: tabular-nums; }
 .chart-usage { margin-top: .4rem; }
+
+.card-since { margin: 0; font-size: .72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.date-aware { margin-top: .5rem; }
+
+/* ---------- AIレビュー ---------- */
+.menu-list a[role="menuitem"] {
+  font-size: .875rem;
+  text-align: left;
+  padding: .5rem .65rem;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.menu-list a[role="menuitem"]:hover { background: var(--surface-2); }
+
+.row-actions { gap: .5rem; margin-top: .25rem; }
+.row-actions .btn { flex: 0 0 auto; }
+.btn.link-danger { color: var(--danger); }
+
+.review-options { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; }
+
+.review-prompt {
+  margin: 0;
+  padding: .7rem .8rem;
+  background: var(--surface-2);
+  border-radius: 9px;
+  font-size: .72rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 20rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Hiragino Sans", monospace;
+}
+
+.review-result { font-size: .88rem; line-height: 1.75; }
+.review-result h3 { font-size: .95rem; margin: 1rem 0 .35rem; }
+.review-result h3:first-child { margin-top: 0; }
+.review-result p { margin: .35rem 0; }
+.review-result ul { margin: .35rem 0; padding-left: 1.2rem; }
+.review-result li { margin-bottom: .25rem; }
+.review-result code { background: var(--surface-2); border-radius: 4px; padding: .05rem .3rem; font-size: .85em; }

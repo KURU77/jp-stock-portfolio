@@ -17,6 +17,8 @@
   const SNAPSHOTS_KEY = 'jp-stock-portfolio.snapshots.v1';
   const THEME_KEY = 'jp-stock-portfolio.theme';
   const DAILY_KEY = 'jp-stock-portfolio.daily.v1';
+  const BUYS_KEY = 'jp-stock-portfolio.buys.v1';
+  const VIEW_KEY = 'jp-stock-portfolio.chart-view.v1';
 
   const ACCOUNTS = [
     { value: 'tokutei', label: '特定口座', short: '特定' },
@@ -59,6 +61,9 @@
   let settings = {};
   /** @type {Record<string, {points: Array<{date:string,c:number}>, fetchedAt:number}>} コード別の日足 */
   let daily = {};
+  let buys = [];
+  /** 取得日を反映するか（既定は反映する） */
+  let dateAware = true;
 
   /** @type {ReturnType<typeof mountChart>|null} */
   let historyChart = null;
@@ -73,12 +78,15 @@
         return v ?? fallback;
       } catch { return fallback; }
     };
-    holdings = read(STORAGE_KEY, []).filter((h) => h && Number(h.shares) > 0);
+    // 0株（売却済み・積立予定）も読む。過去の期間では持っていたことがあるため。
+    holdings = read(STORAGE_KEY, []).filter((h) => h && h.code);
     cash = read(CASH_KEY, {});
     sales = read(SALES_KEY, []);
     snapshots = read(SNAPSHOTS_KEY, []);
     settings = read(SETTINGS_KEY, {});
     daily = read(DAILY_KEY, {});
+    buys = read(BUYS_KEY, []);
+    try { dateAware = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}').dateAware !== false; } catch { dateAware = true; }
     if (settings.relay) window.Quotes.setCustomRelay(settings.relay);
   }
 
@@ -217,9 +225,11 @@
       const g = state.geom;
       if (!g) return null;
       const rect = box.getBoundingClientRect();
+      if (!rect.width) return null;
       const vx = ((clientX - rect.left) / rect.width) * g.W;
       const ratio = (vx - g.padL) / g.innerW;
       const i = Math.round(ratio * (g.rows.length - 1));
+      if (!Number.isFinite(i)) return null;
       return Math.min(Math.max(i, 0), g.rows.length - 1);
     }
 
@@ -423,34 +433,129 @@
 
   // ---------- 1年の推移（日足から再現） ----------
 
-  function buildHistoryRows() {
+  /**
+   * 資産推移のもとになる行を作る。
+   *
+   * dateAware = true のときは、取得日・買付日・売却日を反映して
+   * 「その日に実際に持っていた株数」で評価額を出す。買う前の値動きは入らない。
+   * false のときは、いまの保有株数のまま過去へさかのぼる（従来どおり）。
+   */
+  function buildHistoryRows(dateAware) {
     const codes = [...new Set(holdings.map((h) => h.code))];
     const have = codes.filter((c) => daily[c]?.points?.length);
     if (!have.length) return null;
 
-    // 全銘柄に共通する日付だけを使う（新規上場などで長さが違うため）
-    let dates = null;
-    for (const c of have) {
-      const set = new Set(daily[c].points.map((p) => p.date));
-      dates = dates ? dates.filter((d) => set.has(d)) : [...set];
-    }
-    if (!dates || dates.length < 2) return null;
-    dates.sort();
+    // 日付は全銘柄の和集合。株価が無い日は直前の終値で埋める。
+    const dateSet = new Set();
+    for (const c of have) for (const p of daily[c].points) dateSet.add(p.date);
+    const dates = [...dateSet].sort();
+    if (dates.length < 2) return null;
 
+    // コードごとに「その日までの最新終値」を引けるようにしておく
     const priceAt = {};
-    for (const c of have) priceAt[c] = new Map(daily[c].points.map((p) => [p.date, p.c]));
-
-    const cost = totalCost();
-    const money = totalCash();
-    return dates.map((date) => {
-      let value = 0;
-      for (const h of holdings) {
-        const p = priceAt[h.code]?.get(date);
-        // 日足が無い銘柄は、いまの株価で据え置く（線が途切れないように）
-        value += (p ?? Number(h.quote?.price) ?? 0) * h.shares;
+    for (const c of have) {
+      const map = new Map(daily[c].points.map((p) => [p.date, p.c]));
+      let last = null;
+      const filled = new Map();
+      for (const d of dates) {
+        if (map.has(d)) last = map.get(d);
+        filled.set(d, last);
       }
-      return { date, values: [value + money, value, cost, value - cost] };
-    });
+      priceAt[c] = filled;
+    }
+
+    const money = totalCash();
+
+    if (!dateAware) {
+      const cost = totalCost();
+      return dates.map((date) => {
+        let value = 0;
+        for (const h of holdings) {
+          const p = priceAt[h.code]?.get(date) ?? Number(h.quote?.price) ?? 0;
+          value += p * h.shares;
+        }
+        return { date, values: [value + money, value, cost, value - cost] };
+      });
+    }
+
+    // ---- 取得日を反映する場合 ----
+    // 銘柄ごとに「増減のできごと」を並べ、日付順に積み上げていく。
+    /** @type {Array<{date:string, code:string, dShares:number, dCost:number, dCash:number}>} */
+    const events = [];
+
+    for (const h of holdings) {
+      const recordedBuys = buys.filter((b) => b.holdingId === h.id || (b.code === h.code && b.account === h.account));
+      const recordedSells = sales.filter((s) => s.holdingId === h.id || (s.code === h.code && s.account === h.account));
+      const boughtShares = recordedBuys.reduce((n, b) => n + b.shares, 0);
+      const soldShares = recordedSells.reduce((n, s) => n + s.shares, 0);
+      // 記録に残っていない最初の持ち分＝いまの株数から、記録ぶんを引き戻したもの
+      const initialShares = Math.max(0, h.shares - boughtShares + soldShares);
+
+      if (initialShares > 0) {
+        // 買う前は、その代金を現金として持っていたものとして扱う。
+        // そうしないと、買った日に資産合計が跳ね上がってしまう。
+        events.push({
+          date: h.since,
+          code: h.code,
+          dShares: initialShares,
+          dCost: initialShares * h.avgPrice,
+          dCash: -(initialShares * h.avgPrice),
+        });
+      }
+      for (const b of recordedBuys) {
+        events.push({
+          date: b.date, code: h.code,
+          dShares: b.shares,
+          dCost: b.shares * b.price + b.fee,
+          dCash: -(b.shares * b.price + b.fee),
+        });
+      }
+      for (const s of recordedSells) {
+        events.push({
+          date: s.date, code: h.code,
+          dShares: -s.shares,
+          dCost: -(s.shares * s.avgPrice),
+          dCash: Number(s.proceeds) || 0,
+        });
+      }
+    }
+    if (!events.length) return null;
+    events.sort((a, b) => a.date.localeCompare(b.date));
+
+    // 現金は「いまの残高」から、あとで起きた売買のぶんを巻き戻して推定する
+    const cashAfter = (date) => events
+      .filter((e) => e.date > date)
+      .reduce((n, e) => n - e.dCash, money);
+
+    const shares = {};
+    let cost = 0;
+    let cursor = 0;
+    const rows = [];
+
+    for (const date of dates) {
+      while (cursor < events.length && events[cursor].date <= date) {
+        const e = events[cursor++];
+        shares[e.code] = (shares[e.code] ?? 0) + e.dShares;
+        cost += e.dCost;
+      }
+      let value = 0;
+      for (const [code, n] of Object.entries(shares)) {
+        if (n <= 0) continue;
+        const p = priceAt[code]?.get(date);
+        if (p != null) value += p * n;
+      }
+      const held = Object.values(shares).some((n) => n > 0);
+      rows.push({
+        date,
+        values: [value + cashAfter(date), value, Math.max(0, cost), value - Math.max(0, cost)],
+        held,
+      });
+    }
+
+    // いちばん古い買付より前は「まだ何も持っていない」ので、グラフから外す。
+    const firstHeld = rows.findIndex((r) => r.held);
+    const trimmed = firstHeld > 0 ? rows.slice(firstHeld) : rows;
+    return trimmed.length >= 2 ? trimmed : rows;
   }
 
   const HISTORY_SERIES = [
@@ -460,7 +565,7 @@
   ];
 
   function renderHistory() {
-    const rows = buildHistoryRows();
+    const rows = buildHistoryRows(dateAware);
     if (!rows) {
       historyChart = null;
       el.historyChart.classList.remove('is-interactive');
@@ -497,9 +602,13 @@
     const first = rows[0];
     const diff = last.values[0] - first.values[0];
     el.historyNote.innerHTML =
-      `取得したのは ${esc(first.date)} 〜 ${esc(last.date)} の${rows.length}営業日ぶん。全体では資産合計が `
+      `表示しているのは ${esc(first.date)} 〜 ${esc(last.date)} の${rows.length}営業日ぶん。この間に資産合計は `
       + `<strong class="${cls(diff)}">${esc(signed(diff))}</strong>（${esc(shortYen(first.values[0]))}円 → ${esc(shortYen(last.values[0]))}円）。`
-      + '<br><strong>いまの保有株数のまま持っていた場合</strong>の評価額なので、実際の売買のタイミングは反映されていません。';
+      + (dateAware
+        ? '<br><strong>取得日・買付日・売却日を反映</strong>しています。買う前の値動きは入っていません（取得金額は買うたびに階段状に増えます）。'
+          + '現金は「いまの残高から、その後の売買を巻き戻した推定値」で、買う前はその代金を現金で持っていたものとして扱っています。'
+          + '入出金までは分からないので、資産合計は目安としてお使いください。'
+        : '<br><strong>いまの保有株数のまま持っていた場合</strong>の評価額です。売買のタイミングは反映されていません。');
   }
 
   // ---------- 記録された資産（スナップショット） ----------
@@ -765,6 +874,15 @@
         b.classList.toggle('is-on', on);
         b.setAttribute('aria-pressed', String(on));
       }
+    });
+
+    const dateAwareBox = $('#dateAware');
+    dateAwareBox.checked = dateAware;
+    dateAwareBox.addEventListener('change', () => {
+      dateAware = dateAwareBox.checked;
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ dateAware }));
+      historyChart = null;
+      renderHistory();
     });
 
     document.querySelector('.chart-zoom').addEventListener('click', (e) => {
