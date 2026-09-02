@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>資産のグラフ｜日本株ポートフォリオ</title>
+<meta name="description" content="保有している日本株の資産合計・評価損益の推移、銘柄別の損益、口座と銘柄の構成比をグラフで確認するページ。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="資産グラフ">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">📊</span> 資産のグラフ</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <a class="btn" href="./">← ポートフォリオ</a>
+      <button type="button" id="reloadBtn" class="btn btn-primary">1年の推移を取得</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="stats" aria-label="いまの資産">
+    <div class="stat"><span class="stat-value" id="statAssets">—</span><span class="stat-label">資産合計（株＋現金）</span></div>
+    <div class="stat"><span class="stat-value" id="statValue">—</span><span class="stat-label">評価額</span></div>
+    <div class="stat"><span class="stat-value" id="statPl">—</span><span class="stat-label">評価損益</span></div>
+    <div class="stat"><span class="stat-value" id="statRealized">—</span><span class="stat-label">実現損益（累計）</span></div>
+  </section>
+
+  <section class="panel" aria-label="1年の推移">
+    <div class="panel-head">
+      <h2 class="panel-title">資産の推移（過去1年）</h2>
+      <div class="segmented" id="rangeMode" role="group" aria-label="期間">
+        <button type="button" data-range="60" aria-pressed="false">3か月</button>
+        <button type="button" data-range="125" aria-pressed="false">6か月</button>
+        <button type="button" data-range="250" class="is-on" aria-pressed="true">1年</button>
+      </div>
+    </div>
+    <div id="historyChart" class="chart-box"></div>
+    <div class="chart-legend" id="historyLegend"></div>
+    <p class="note" id="historyNote">
+      「1年の推移を取得」を押すと、保有銘柄の日足を取得して資産の推移を描きます。
+      <strong>いまの保有株数のまま1年前から持っていた場合</strong>の評価額なので、
+      実際の売買のタイミングは反映されていません（過去の株価はそのままの実績です）。
+    </p>
+  </section>
+
+  <section class="panel" aria-label="毎日の記録">
+    <h2 class="panel-title">記録された資産（アプリを開いた日の実績）</h2>
+    <div id="snapshotChart" class="chart-box"></div>
+    <div class="chart-legend" id="snapshotLegend"></div>
+    <p class="note">
+      アプリを開いて株価を更新するたび、その日の資産合計・評価額・取得金額・現金を1日1件だけ記録しています。
+      こちらは売買や入金もそのまま反映された<strong>実際の推移</strong>です（記録した日だけが点になります）。
+    </p>
+  </section>
+
+  <section class="panel" aria-label="銘柄別の評価損益">
+    <h2 class="panel-title">銘柄別の評価損益</h2>
+    <div id="plChart" class="chart-box chart-box-auto"></div>
+  </section>
+
+  <section class="panel" aria-label="構成比">
+    <h2 class="panel-title">資産の内訳</h2>
+    <div class="donut-row">
+      <div class="donut-block">
+        <h3 class="donut-title">銘柄別（評価額）</h3>
+        <div id="stockDonut" class="donut-wrap"></div>
+        <ul class="donut-legend" id="stockLegend"></ul>
+      </div>
+      <div class="donut-block">
+        <h3 class="donut-title">口座別（株＋現金）</h3>
+        <div id="accountDonut" class="donut-wrap"></div>
+        <ul class="donut-legend" id="accountLegend"></ul>
+      </div>
+    </div>
+  </section>
+
+  <p class="empty" id="empty" hidden>
+    保有銘柄がありません。<br>
+    <a href="./">ポートフォリオ</a>で銘柄を登録すると、ここにグラフが出ます。
+  </p>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      グラフの数値はすべて参考値です。株価はYahoo Financeの終値で、15〜20分の遅延があります。
+      <a href="privacy.html">プライバシーについて</a>
+    </p>
+  </div>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/quotes.js"></script>
+<script src="js/chart.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>

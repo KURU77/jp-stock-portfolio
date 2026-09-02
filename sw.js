@@ -10,7 +10,7 @@
  * 収録ファイルを増やしたときは PRECACHE に足し、VERSION を上げる。
  */
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `jp-stock-portfolio-${VERSION}`;
 
 /** 初回インストール時にまとめて取っておくファイル。これだけあればオフラインでも開ける。 */
@@ -18,6 +18,7 @@ const PRECACHE = [
   './',
   'index.html',
   'night.html',
+  'chart.html',
   'privacy.html',
   'css/style.css',
   'js/stocks.js',
@@ -25,6 +26,7 @@ const PRECACHE = [
   'js/quotes.js',
   'js/app.js',
   'js/night.js',
+  'js/chart.js',
   'manifest.webmanifest',
   'assets/icon.svg',
   'assets/favicon-32.png',

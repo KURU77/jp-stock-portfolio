@@ -237,6 +237,45 @@ window.Quotes = (() => {
     };
   }
 
+  // ---------- 過去1年の日足（グラフ用） ----------
+
+  function dailyUrl(symbol) {
+    const q = new URLSearchParams({ range: '1y', interval: '1d', includePrePost: 'false' });
+    return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${q}`;
+  }
+
+  /** 日足の終値だけを取り出す。資産推移のグラフに使う。 */
+  function extractDaily(json) {
+    const err = json?.chart?.error;
+    if (err) throw new Error(err.description || err.code || 'APIエラー');
+    const r = json?.chart?.result?.[0];
+    if (!r) throw new Error('データが空です');
+
+    const stamps = Array.isArray(r.timestamp) ? r.timestamp : [];
+    const closes = r.indicators?.quote?.[0]?.close ?? [];
+    const points = [];
+    for (let i = 0; i < stamps.length; i++) {
+      const c = Number(closes[i]);
+      if (!Number.isFinite(c)) continue;
+      // JSTのカレンダー日をキーにしておくと、銘柄どうしを日付で突き合わせやすい。
+      points.push({ date: new Date((stamps[i] + 9 * 3600) * 1000).toISOString().slice(0, 10), c });
+    }
+    if (!points.length) throw new Error('日足がありません');
+
+    return {
+      symbol: String(r.meta?.symbol || ''),
+      points,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  /** 1銘柄ぶんの日足（1年）を取得する。 */
+  async function fetchDaily(code) {
+    const symbol = toSymbol(code);
+    if (!symbol) throw new Error('証券コードが空です');
+    return fetchViaRelays(dailyUrl(symbol), extractDaily);
+  }
+
   /** 1銘柄ぶんの当日5分足を取得する。 */
   async function fetchIntraday(code) {
     const symbol = toSymbol(code);
@@ -244,5 +283,5 @@ window.Quotes = (() => {
     return fetchViaRelays(intradayUrl(symbol), extractIntraday);
   }
 
-  return { fetchQuote, fetchIntraday, toSymbol, setCustomRelay };
+  return { fetchQuote, fetchIntraday, fetchDaily, toSymbol, setCustomRelay };
 })();

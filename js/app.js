@@ -12,6 +12,7 @@
   const CASH_KEY = 'jp-stock-portfolio.cash.v1';
   const SALES_KEY = 'jp-stock-portfolio.sales.v1';
   const PLANS_KEY = 'jp-stock-portfolio.plans.v1';
+  const SNAPSHOTS_KEY = 'jp-stock-portfolio.snapshots.v1';
 
   /** NISAの年間投資枠。積み立ての年額がどれくらい使うかの目安に使う。 */
   const NISA_ANNUAL_LIMIT = { 'nisa-growth': 2_400_000, 'nisa-tsumitate': 1_200_000 };
@@ -321,6 +322,32 @@
 
   const savePlans = () => localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
 
+  /**
+   * その日の資産のスナップショットを残す（グラフ用）。
+   * 同じ日は上書きするので、1日1件だけ貯まる。株価が1件も無い日は記録しない。
+   */
+  function recordSnapshot() {
+    const t = totals(holdings);
+    if (t.value == null) return;
+    const entry = {
+      date: todayIso(),
+      cost: Math.round(t.cost),
+      value: Math.round(t.value),
+      cash: Math.round(totalCash()),
+      pl: Math.round(t.value - t.cost),
+    };
+    try {
+      const raw = JSON.parse(localStorage.getItem(SNAPSHOTS_KEY) || '[]');
+      const list = Array.isArray(raw) ? raw.filter((s) => s && s.date !== entry.date) : [];
+      list.push(entry);
+      list.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      // 5年ぶんもあれば十分。
+      localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(list.slice(-1830)));
+    } catch (err) {
+      console.warn('スナップショットの保存に失敗しました', err);
+    }
+  }
+
   /** 'YYYY-MM'（いまの月） */
   const currentYm = () => todayIso().slice(0, 7);
 
@@ -596,6 +623,7 @@
     renderPlanPanel();
     renderYutaiPanel();
     renderSalesPanel();
+    recordSnapshot();
   }
 
   function renderStats() {
@@ -831,8 +859,19 @@
 
   function renderPlanPanel() {
     const rows = plans.filter((p) => matchAccount(p, settings.account));
-    el.planPanel.hidden = rows.length === 0;
-    if (!rows.length) return;
+
+    // 設定が無くてもパネルごと隠さない。隠すと「＋ 積み立てを追加」まで消えて
+    // 最初の1件を登録できなくなる。
+    el.planPanel.hidden = false;
+    if (!rows.length) {
+      el.planSummary.innerHTML = '';
+      el.planList.innerHTML = `
+<p class="empty">
+  ${plans.length ? 'この口座の積み立て設定はありません。' : 'まだ積み立ての設定がありません。'}<br>
+  「＋ 積み立てを追加」から、銘柄・口座・毎月の金額・買付日を登録してください。
+</p>`;
+      return;
+    }
 
     // 口座ごとの毎月の合計と、NISAの年間枠の消化ぐあい
     const byAccount = new Map();
@@ -2255,6 +2294,7 @@ ${yutaiLine}
 
     // 積み立て
     el.addPlanBtn.addEventListener('click', () => openPlanDialog(null));
+    $('#menuAddPlanBtn').addEventListener('click', () => openPlanDialog(null));
     el.planForm.addEventListener('submit', submitPlan);
     attachCombo(el.planCodeInput, el.planCodeSuggest, {
       onPick: () => { updatePlanPreview(); el.planAmountInput.focus(); },
