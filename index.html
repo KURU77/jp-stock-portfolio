@@ -431,9 +431,11 @@
   <form id="cashForm" method="dialog">
     <h2 class="dialog-title" tabindex="-1" autofocus>投資余力（現金）</h2>
     <p class="dialog-text">
-      口座ごとの買付余力を入れておくと、資産の合計や買い増しシミュレーションで「足りるかどうか」が分かります。
+      入金・出金したぶんを<strong>増減額だけ</strong>入れれば反映できます（残高を計算し直す必要はありません）。
+      口座ごとの余力は、資産の合計や買い増しシミュレーションの「足りるかどうか」に使われます。
     </p>
     <div id="cashRows" class="cash-rows"></div>
+    <label class="check"><input type="checkbox" id="cashAbsolute"> 残高を直接入力する（いまの金額で上書き）</label>
     <p class="hint">
       売却を記録すると受取額が自動で加算され、買い増しを記録すると支払額が差し引かれます（それぞれダイアログのチェックで切り替えられます）。
     </p>

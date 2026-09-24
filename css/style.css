@@ -1436,3 +1436,31 @@ body {
 .review-result ul { margin: .35rem 0; padding-left: 1.2rem; }
 .review-result li { margin-bottom: .25rem; }
 .review-result code { background: var(--surface-2); border-radius: 4px; padding: .05rem .3rem; font-size: .85em; }
+
+/* ---------- 投資余力（増減入力） ---------- */
+.cash-row { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+
+.cash-head { display: flex; align-items: baseline; gap: .5rem; }
+.cash-name { font-size: .82rem; font-weight: 600; }
+.cash-current { margin-left: auto; font-size: .8rem; color: var(--text-muted); font-style: normal; }
+
+.cash-line { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.cash-sign button { padding: .3rem .55rem; font-size: .75rem; }
+
+.cash-delta {
+  font: inherit;
+  font-size: var(--input-font-size);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: .45rem .6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  flex: 1 1 6rem;
+  min-width: 0;
+}
+
+.cash-delta:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cash-after { font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.field > span .cash-current { margin-left: .4rem; font-weight: 500; }

@@ -108,6 +108,7 @@
     cashDialog: $('#cashDialog'),
     cashForm: $('#cashForm'),
     cashRows: $('#cashRows'),
+    cashAbsolute: $('#cashAbsolute'),
     // 積み立て
     planPanel: $('#planPanel'),
     planSummary: $('#planSummary'),
@@ -818,7 +819,10 @@
 
   /** 積み立て先の保有銘柄（同じコード・同じ口座）。無ければ0株で作る。 */
   function holdingForPlan(plan, create = false) {
-    let h = holdings.find((x) => x.code === plan.code && x.account === plan.account);
+    // 買い直しで同じ銘柄・同じ口座の記録が複数あることがあるので、
+    // いま持っているほう（0株でないもの）を優先して選ぶ。
+    const sameSlot = holdings.filter((x) => x.code === plan.code && x.account === plan.account);
+    let h = sameSlot.find((x) => x.shares > 0) ?? sameSlot[0];
     if (!h && create) {
       const preset = presetByCode.get(plan.code);
       h = normalize({
@@ -1011,13 +1015,18 @@ ${[...byAccount.entries()].map(([account, amount]) => {
 </article>`;
   }
 
-  function visibleHoldings() {
+  /** 検索欄の文字に当てはまるか */
+  function matchesSearch(h) {
     const q = el.search.value.trim().toLowerCase();
+    if (!q) return true;
+    return [h.code, h.name, h.memo, h.quote?.nameEn].filter(Boolean).join(' ').toLowerCase().includes(q);
+  }
+
+  function visibleHoldings() {
     let rows = accountFiltered().filter((h) => {
       // 全部売った銘柄は既定で隠す（記録は残っているので、いつでも戻せる）。
       if (h.shares <= 0 && !settings.showSold) return false;
-      if (!q) return true;
-      return [h.code, h.name, h.memo, h.quote?.nameEn].filter(Boolean).join(' ').toLowerCase().includes(q);
+      return matchesSearch(h);
     });
 
     const key = settings.sort;
@@ -1042,7 +1051,16 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     el.list.classList.toggle('table-view', settings.view === 'table');
 
     if (!rows.length) {
-      el.list.innerHTML = holdings.length ? '<p class="empty">条件に合う銘柄がありません。</p>' : '';
+      // 全部売って0株になった銘柄は既定で隠しているので、隠れているだけなら
+      // 「無い」と言い切らずに教える。検索しても出てこない理由がこれだったため。
+      const hiddenSold = settings.showSold
+        ? 0
+        : accountFiltered().filter((h) => h.shares <= 0 && matchesSearch(h)).length;
+      el.list.innerHTML = holdings.length
+        ? `<p class="empty">条件に合う銘柄がありません。${hiddenSold
+          ? `<br>売却済み（0株）の銘柄が${hiddenSold}件あります。上の「売却済みも表示」で確認できます。<br>同じ銘柄を買い直した場合は、そのまま「＋ 銘柄を追加」で登録できます。`
+          : ''}</p>`
+        : '';
       return;
     }
     el.list.innerHTML = settings.view === 'table' ? tableHtml(rows) : rows.map(cardHtml).join('');
@@ -1423,11 +1441,16 @@ ${[...byAccount.entries()].map(([account, amount]) => {
 
     // 同じ銘柄でも口座が違えば別枠で持てる（特定口座とNISAの併有）。
     const account = el.accountInput.value;
-    const dup = holdings.find((h) => h.code === code && h.account === account && h.id !== editingId);
-    if (dup) {
+    const sameSlot = holdings.filter((h) => h.code === code && h.account === account && h.id !== editingId);
+    const active = sameSlot.find((h) => h.shares > 0);
+    if (active) {
       const label = ACCOUNTS.find((a) => a.value === account)?.label ?? '';
       return failHolding(event, `証券コード ${code} は${label}にすでに登録されています（買い増しは「買い増し」ボタンから）。`);
     }
+    // すべて売って0株になった記録しか無いときは、買い直しとして新しく登録できる。
+    // 0株の記録は一覧に出ていないので、ここで弾くと「見えないのに登録もできない」状態になる。
+    // 古い記録は売却履歴とつながっているのでそのまま残し、別の持ち分として足す。
+    const soldOut = sameSlot.length > 0;
 
     const tiers = readTierRows();
     const yutaiNote = el.yutaiNoteInput.value.trim();
@@ -1461,7 +1484,11 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     }
     save();
     render();
-    toast(base ? '保存しました' : `${next.name || next.code} を追加しました`);
+    toast(base
+      ? '保存しました'
+      : soldOut
+        ? `${next.name || next.code} を買い直しとして登録しました（以前の売却記録はそのまま残ります）`
+        : `${next.name || next.code} を追加しました`);
     if (!base || !next.quote) requestQuotes([next.id], { quiet: true });
   }
 
@@ -1906,23 +1933,95 @@ ${[...byAccount.entries()].map(([account, amount]) => {
   // ---------- 投資余力 ----------
 
   function openCashDialog() {
-    el.cashRows.innerHTML = ACCOUNTS.map((a) => `
-<label class="field">
-  <span>${esc(a.label)}</span>
-  <input type="number" class="cash-input" data-account="${esc(a.value)}" min="0" step="1"
-         inputmode="numeric" value="${cash[a.value] ? String(cash[a.value]) : ''}" placeholder="0">
-</label>`).join('');
+    el.cashAbsolute.checked = false;
+    renderCashRows();
     el.cashDialog.showModal();
   }
 
-  function submitCash() {
-    for (const input of el.cashRows.querySelectorAll('.cash-input')) {
-      const v = num(input.value);
-      cash[input.dataset.account] = Number.isFinite(v) && v > 0 ? v : 0;
+  /**
+   * 口座ごとの入力欄を作る。
+   * ふだんは「増減額」だけを入れれば済むようにして、残高の計算をさせない。
+   * 直したいときだけチェックを入れて残高そのものを入力する。
+   */
+  function renderCashRows() {
+    const absolute = el.cashAbsolute.checked;
+    el.cashRows.innerHTML = ACCOUNTS.map((a) => {
+      const now = cash[a.value] ?? 0;
+      if (absolute) {
+        return `
+<label class="field cash-row" data-account="${esc(a.value)}">
+  <span>${esc(a.label)}<em class="cash-current">いまは ${esc(yen(now))}</em></span>
+  <input type="number" class="cash-absolute" min="0" step="1" inputmode="numeric"
+         value="${now ? String(now) : ''}" placeholder="0" aria-label="${esc(a.label)}の残高">
+</label>`;
+      }
+      return `
+<div class="cash-row" data-account="${esc(a.value)}">
+  <div class="cash-head">
+    <span class="cash-name">${esc(a.label)}</span>
+    <span class="cash-current num">${esc(yen(now))}</span>
+  </div>
+  <div class="cash-line">
+    <div class="segmented cash-sign" role="group" aria-label="${esc(a.label)}の入金・出金">
+      <button type="button" data-sign="1" class="is-on" aria-pressed="true">入金 ＋</button>
+      <button type="button" data-sign="-1" aria-pressed="false">出金 −</button>
+    </div>
+    <input type="number" class="cash-delta" step="1" inputmode="numeric" placeholder="増減額"
+           aria-label="${esc(a.label)}の増減額">
+    <span class="cash-after num"></span>
+  </div>
+</div>`;
+    }).join('');
+  }
+
+  /** その口座の増減額（入金は+、出金は−）。空なら0。 */
+  function cashDeltaOf(row) {
+    const input = row.querySelector('.cash-delta');
+    if (!input || !input.value.trim()) return 0;
+    const sign = Number(row.querySelector('.cash-sign .is-on')?.dataset.sign ?? 1);
+    const v = num(input.value);
+    return Number.isFinite(v) ? v * sign : 0;
+  }
+
+  function updateCashPreview() {
+    for (const row of el.cashRows.querySelectorAll('.cash-row')) {
+      const after = row.querySelector('.cash-after');
+      if (!after) continue;
+      const delta = cashDeltaOf(row);
+      if (!delta) { after.textContent = ''; continue; }
+      const now = cash[row.dataset.account] ?? 0;
+      const next = now + delta;
+      after.textContent = next < 0 ? `→ ${yen(0)}（0円未満にはしません）` : `→ ${yen(next)}`;
+      after.className = `cash-after num ${plClass(delta)}`;
     }
+  }
+
+  function submitCash() {
+    if (el.cashAbsolute.checked) {
+      for (const input of el.cashRows.querySelectorAll('.cash-absolute')) {
+        const v = num(input.value);
+        cash[input.closest('.cash-row').dataset.account] = Number.isFinite(v) && v > 0 ? v : 0;
+      }
+      saveCash();
+      render();
+      toast(`投資余力を保存しました（合計 ${yen(totalCash())}）`);
+      return;
+    }
+
+    const changed = [];
+    for (const row of el.cashRows.querySelectorAll('.cash-row')) {
+      const delta = cashDeltaOf(row);
+      if (!delta) continue;
+      const account = row.dataset.account;
+      const label = ACCOUNTS.find((a) => a.value === account)?.label ?? '';
+      cash[account] = Math.max(0, (cash[account] ?? 0) + delta);
+      changed.push(`${label} ${signed(delta)}`);
+    }
+
+    if (!changed.length) return toast('増減額が入力されていません');
     saveCash();
     render();
-    toast(`投資余力を保存しました（合計 ${yen(totalCash())}）`);
+    toast(`${changed.join(' / ')}（合計 ${yen(totalCash())}）`);
   }
 
   // ---------- シミュレーション ----------
@@ -2092,9 +2191,14 @@ ${yutaiLine}
       const rows = Array.isArray(parsed) ? parsed : parsed.holdings;
       if (!Array.isArray(rows)) throw new Error('holdings が見つかりません');
       const incoming = rows.map(normalize);
-      // 銘柄コードだけでなく口座も見て突き合わせる（同じ銘柄を別口座で持てるため）
+      // 銘柄コードだけでなく口座も見て突き合わせる（同じ銘柄を別口座で持てるため）。
+      // 買い直しで同じ枠に複数の記録があるときは、いま持っているほうに当てる。
       const keyOf = (h) => `${h.code}:${h.account}`;
-      const byKey = new Map(holdings.map((h) => [keyOf(h), h]));
+      const byKey = new Map();
+      for (const h of holdings) {
+        const key = keyOf(h);
+        if (!byKey.has(key) || (h.shares > 0 && byKey.get(key).shares <= 0)) byKey.set(key, h);
+      }
       let added = 0, updated = 0;
       for (const h of incoming) {
         const key = keyOf(h);
@@ -2435,6 +2539,18 @@ ${yutaiLine}
     // 投資余力
     $('#cashBtn').addEventListener('click', openCashDialog);
     el.cashForm.addEventListener('submit', submitCash);
+    el.cashAbsolute.addEventListener('change', renderCashRows);
+    el.cashRows.addEventListener('input', updateCashPreview);
+    el.cashRows.addEventListener('click', (e) => {
+      const btn = e.target.closest('.cash-sign button[data-sign]');
+      if (!btn) return;
+      for (const b of btn.parentElement.querySelectorAll('button')) {
+        const on = b === btn;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      updateCashPreview();
+    });
 
     // 売却履歴の取り消し
     el.salesList.addEventListener('click', (e) => {
