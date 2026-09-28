@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Google同期｜日本株ポートフォリオ</title>
+<meta name="description" content="Googleアカウントでログインして、パソコン・iPad・iPhone の間でポートフォリオのデータを同期する設定ページ。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Google同期">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">🔄</span> Google同期</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <a class="btn" href="./">← ポートフォリオ</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="panel panel-tight">
+    <h2 class="panel-title">いまの状態</h2>
+    <div class="stats stats-inline" id="statusTiles"></div>
+    <div class="row row-actions">
+      <button type="button" id="connectBtn" class="btn btn-primary">Googleに接続</button>
+      <button type="button" id="syncBtn" class="btn">いま同期する</button>
+      <button type="button" id="disconnectBtn" class="btn link-danger">切断</button>
+    </div>
+    <label class="check"><input type="checkbox" id="autoSync" checked> 変更したら自動で同期する（開いたときの取り込みもする）</label>
+    <p class="note" id="statusNote"></p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">手動で入れ替える</h2>
+    <p class="dialog-text">
+      いつもは自動で新しいほうに合わせます。食い違ったときや、ひとつの端末の内容で揃えたいときだけ使ってください。
+    </p>
+    <div class="row row-actions">
+      <button type="button" id="pushBtn" class="btn">この端末の内容をGoogleへ（上書き）</button>
+      <button type="button" id="pullBtn" class="btn">Googleの内容をこの端末へ（上書き）</button>
+      <button type="button" id="restoreBtn" class="btn">直前の内容に戻す</button>
+    </div>
+    <p class="note">
+      取り込みの前に、この端末の内容は1世代だけ控えを取ります（「直前の内容に戻す」で戻せます）。
+      大事なデータはポートフォリオ側の「JSONで書き出し」でも保存しておくと安心です。
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">最初の設定（1回だけ）</h2>
+    <p class="dialog-text">
+      このアプリはサーバーを持たないので、データの置き場は<strong>あなた自身のGoogleドライブ</strong>です。
+      そのためのアクセス許可（OAuthクライアントID）を、ご自身のGoogleアカウントで1つ作ってください。
+      作ったIDはこの端末のブラウザ内にだけ保存されます。
+    </p>
+    <ol class="setup-steps">
+      <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> でプロジェクトを作る（名前は何でも構いません）。</li>
+      <li>「APIとサービス」→「ライブラリ」で <strong>Google Drive API</strong> を有効にする。</li>
+      <li>「OAuth同意画面」を作る。ユーザーの種類は「外部」、アプリ名と自分のメールを入れて保存。
+        テストのままにする場合は「テストユーザー」に自分のGoogleアカウントを追加してください。</li>
+      <li>「認証情報」→「認証情報を作成」→「OAuthクライアントID」→ 種類は<strong>ウェブアプリケーション</strong>。</li>
+      <li><strong>承認済みのJavaScript生成元</strong>に、このページの場所を登録する：
+        <div class="origin-box"><code id="originValue">—</code><button type="button" id="copyOriginBtn" class="btn btn-sm">コピー</button></div>
+        <span class="hint">リダイレクトURIの登録は不要です。</span></li>
+      <li>できたクライアントID（<code>…apps.googleusercontent.com</code>）を下に貼り付けて保存。</li>
+    </ol>
+
+    <label class="field">
+      <span>OAuth クライアントID</span>
+      <input type="text" id="clientId" autocomplete="off" spellcheck="false" placeholder="1234567890-xxxxxxxx.apps.googleusercontent.com">
+    </label>
+    <div class="row row-actions">
+      <button type="button" id="saveIdBtn" class="btn">クライアントIDを保存</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">同期されるもの・されないもの</h2>
+    <div class="sync-lists">
+      <div>
+        <h3 class="donut-title">同期する</h3>
+        <ul class="dialog-list">
+          <li>保有銘柄（取得単価・株数・取得日・優待の設定）</li>
+          <li>売却の記録と買付の記録</li>
+          <li>毎月の積み立ての設定と実績</li>
+          <li>投資余力（口座ごとの現金）</li>
+          <li>記録された資産の推移</li>
+          <li>設定（配当の税率、中継サービスの指定）</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="donut-title">同期しない</h3>
+        <ul class="dialog-list">
+          <li><strong>GeminiのAPIキー</strong>（端末ごとに入れてください）</li>
+          <li>夜間PTSの手入力（その晩だけのもの）</li>
+          <li>株価・日足のキャッシュ（各端末で取り直せます）</li>
+          <li>ダークモードなどの見た目の設定</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">
+      アプリが読み書きするのは、ドライブ上の <code>jp-stock-portfolio-sync.json</code> だけです（<code>drive.file</code> 権限）。
+      ほかのファイルは見えません。作者や第三者のサーバーは経由せず、通信先はGoogleだけです。
+    </p>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      本アプリは投資助言を行うものではありません。<a href="privacy.html">プライバシーについて</a>
+    </p>
+  </div>
+</footer>
+
+<dialog id="conflictDialog" class="dialog">
+  <form id="conflictForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus>どちらの内容を残しますか？</h2>
+    <p class="dialog-text">
+      この端末とGoogle側の両方が、前回の同期のあとで変わっています。勝手に混ぜると数字が狂うので、どちらかを選んでください。
+    </p>
+    <div class="conflict-grid" id="conflictInfo"></div>
+    <p class="note">選ばなかったほうは上書きされます。取り込む場合は、この端末の内容の控えを残します。</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close>あとで決める</button>
+      <button type="button" class="btn" id="keepRemoteBtn">Google側を使う</button>
+      <button type="button" class="btn btn-primary" id="keepLocalBtn">この端末を使う</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="js/sync.js"></script>
+<script src="js/sync-page.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>

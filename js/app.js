@@ -331,9 +331,9 @@
     };
   }
 
-  const saveBuys = () => localStorage.setItem(BUYS_KEY, JSON.stringify(buys));
+  const saveBuys = () => { localStorage.setItem(BUYS_KEY, JSON.stringify(buys)); touched(); };
 
-  const savePlans = () => localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+  const savePlans = () => { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); touched(); };
 
   /**
    * その日の資産のスナップショットを残す（グラフ用）。
@@ -400,12 +400,16 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  const saveCash = () => localStorage.setItem(CASH_KEY, JSON.stringify(cash));
-  const saveSales = () => localStorage.setItem(SALES_KEY, JSON.stringify(sales));
+  /** 保存したことを同期に知らせる（Google同期を設定していないときは何も起きない）。 */
+  const touched = () => window.Sync?.markDirty?.();
+
+  const saveCash = () => { localStorage.setItem(CASH_KEY, JSON.stringify(cash)); touched(); };
+  const saveSales = () => { localStorage.setItem(SALES_KEY, JSON.stringify(sales)); touched(); };
 
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings));
+      touched();
     } catch (err) {
       console.error('保存に失敗しました', err);
       toast('保存に失敗しました（保存容量が上限の可能性があります）');
@@ -415,6 +419,7 @@
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      touched();
     } catch (err) {
       console.error('設定の保存に失敗しました', err);
     }
@@ -2646,6 +2651,34 @@ ${yutaiLine}
     if (settings.autoRefresh && settings.netConsent && holdings.length) {
       fetchQuotes(holdings.map((h) => h.id), { quiet: true });
     }
+
+    startSync();
+  }
+
+  /**
+   * Google同期を設定してあれば、開いたときに新しいほうへ合わせる。
+   * 取り込んだときは画面を作り直す必要があるので読み込み直す。
+   */
+  function startSync() {
+    if (!window.Sync?.isConfigured?.()) return;
+    window.Sync.start().then((result) => {
+      if (!result) return;
+      switch (result.status) {
+        case 'pulled':
+          toast('Googleから最新のデータを取り込みました');
+          setTimeout(() => location.reload(), 900);
+          break;
+        case 'conflict':
+          toast('この端末とGoogle側の両方が変わっています。メニューの「Google同期」でどちらを残すか選んでください');
+          break;
+        case 'error':
+          // まだ一度も接続していないうちは、開くたびに出すとうるさいので黙っておく。
+          if (window.Sync.isConnected()) toast(`同期できませんでした：${result.message}`);
+          break;
+        default:
+          break;
+      }
+    });
   }
 
   init();

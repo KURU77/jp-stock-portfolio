@@ -1464,3 +1464,43 @@ body {
 .cash-delta:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cash-after { font-size: .78rem; font-weight: 600; white-space: nowrap; }
 .field > span .cash-current { margin-left: .4rem; font-weight: 500; }
+
+/* ---------- Google同期 ---------- */
+.setup-steps {
+  margin: .5rem 0 1rem;
+  padding-left: 1.3rem;
+  font-size: .85rem;
+  line-height: 1.8;
+}
+
+.setup-steps li { margin-bottom: .5rem; }
+.setup-steps code { background: var(--surface-2); border-radius: 4px; padding: .05rem .3rem; font-size: .85em; overflow-wrap: anywhere; }
+
+.origin-box {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin: .3rem 0;
+  padding: .4rem .55rem;
+  background: var(--surface-2);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.origin-box code { background: transparent; font-size: .8rem; overflow-wrap: anywhere; flex: 1; min-width: 0; }
+
+.sync-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.sync-lists .dialog-list { font-size: .82rem; }
+
+.conflict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; }
+
+.conflict-side {
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: .6rem .7rem;
+  min-width: 0;
+}
+
+.conflict-side h3 { margin: 0 0 .25rem; font-size: .82rem; }
+.conflict-side p { margin: 0; font-size: .78rem; color: var(--text-muted); overflow-wrap: anywhere; }
