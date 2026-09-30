@@ -1504,3 +1504,13 @@ body {
 
 .conflict-side h3 { margin: 0 0 .25rem; font-size: .82rem; }
 .conflict-side p { margin: 0; font-size: .78rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+.warn-box {
+  margin: .6rem 0;
+  padding: .55rem .7rem;
+  background: var(--warn-weak);
+  color: var(--warn);
+  border-radius: 9px;
+  font-size: .8rem;
+  line-height: 1.6;
+}

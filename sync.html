@@ -35,57 +35,28 @@
   <section class="panel panel-tight">
     <h2 class="panel-title">いまの状態</h2>
     <div class="stats stats-inline" id="statusTiles"></div>
+    <p class="warn-box" id="inAppWarn" hidden>
+      ⚠ LINEやInstagramなどのアプリ内ブラウザでは、Googleがログインを受け付けません。
+      右上のメニューから「Safariで開く」（またはブラウザで開く）を選んでから、もう一度お試しください。
+    </p>
     <div class="row row-actions">
-      <button type="button" id="connectBtn" class="btn btn-primary">Googleに接続</button>
-      <button type="button" id="syncBtn" class="btn">いま同期する</button>
-      <button type="button" id="disconnectBtn" class="btn link-danger">切断</button>
+      <button type="button" id="loginBtn" class="btn btn-primary">Googleでログイン</button>
+      <button type="button" id="syncBtn" class="btn">今すぐ同期</button>
+      <button type="button" id="logoutBtn" class="btn link-danger">ログアウト</button>
     </div>
-    <label class="check"><input type="checkbox" id="autoSync" checked> 変更したら自動で同期する（開いたときの取り込みもする）</label>
     <p class="note" id="statusNote"></p>
   </section>
 
   <section class="panel">
-    <h2 class="panel-title">手動で入れ替える</h2>
-    <p class="dialog-text">
-      いつもは自動で新しいほうに合わせます。食い違ったときや、ひとつの端末の内容で揃えたいときだけ使ってください。
-    </p>
-    <div class="row row-actions">
-      <button type="button" id="pushBtn" class="btn">この端末の内容をGoogleへ（上書き）</button>
-      <button type="button" id="pullBtn" class="btn">Googleの内容をこの端末へ（上書き）</button>
-      <button type="button" id="restoreBtn" class="btn">直前の内容に戻す</button>
-    </div>
-    <p class="note">
-      取り込みの前に、この端末の内容は1世代だけ控えを取ります（「直前の内容に戻す」で戻せます）。
-      大事なデータはポートフォリオ側の「JSONで書き出し」でも保存しておくと安心です。
-    </p>
-  </section>
-
-  <section class="panel">
-    <h2 class="panel-title">最初の設定（1回だけ）</h2>
-    <p class="dialog-text">
-      このアプリはサーバーを持たないので、データの置き場は<strong>あなた自身のGoogleドライブ</strong>です。
-      そのためのアクセス許可（OAuthクライアントID）を、ご自身のGoogleアカウントで1つ作ってください。
-      作ったIDはこの端末のブラウザ内にだけ保存されます。
-    </p>
-    <ol class="setup-steps">
-      <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> でプロジェクトを作る（名前は何でも構いません）。</li>
-      <li>「APIとサービス」→「ライブラリ」で <strong>Google Drive API</strong> を有効にする。</li>
-      <li>「OAuth同意画面」を作る。ユーザーの種類は「外部」、アプリ名と自分のメールを入れて保存。
-        テストのままにする場合は「テストユーザー」に自分のGoogleアカウントを追加してください。</li>
-      <li>「認証情報」→「認証情報を作成」→「OAuthクライアントID」→ 種類は<strong>ウェブアプリケーション</strong>。</li>
-      <li><strong>承認済みのJavaScript生成元</strong>に、このページの場所を登録する：
-        <div class="origin-box"><code id="originValue">—</code><button type="button" id="copyOriginBtn" class="btn btn-sm">コピー</button></div>
-        <span class="hint">リダイレクトURIの登録は不要です。</span></li>
-      <li>できたクライアントID（<code>…apps.googleusercontent.com</code>）を下に貼り付けて保存。</li>
-    </ol>
-
-    <label class="field">
-      <span>OAuth クライアントID</span>
-      <input type="text" id="clientId" autocomplete="off" spellcheck="false" placeholder="1234567890-xxxxxxxx.apps.googleusercontent.com">
-    </label>
-    <div class="row row-actions">
-      <button type="button" id="saveIdBtn" class="btn">クライアントIDを保存</button>
-    </div>
+    <h2 class="panel-title">どう動くか</h2>
+    <ul class="dialog-list">
+      <li>データはあなたのGoogleドライブの<strong>アプリ専用領域</strong>に置かれます。ドライブの画面には出ず、このアプリ以外からは見えません。サーバーは使いません。</li>
+      <li>変更は数秒後に自動で送られ、アプリを開いたときに他の端末の変更を取り込みます。</li>
+      <li>銘柄・売却・買付・積み立ては<strong>1件ごとに</strong>新しいほうを採ります。別々の端末で別の銘柄を直しても、どちらも残ります。削除も他の端末へ伝わります。</li>
+      <li>投資余力は口座ごと、設定は丸ごと1単位で、あとから変えたほうを採ります。</li>
+      <li>ログインの有効期限は約1時間で、切れたら自動で取り直します。取り直せないときは「Googleでログイン」を押してください。</li>
+      <li>ほかの端末でも、同じGoogleアカウントでログインしてください。</li>
+    </ul>
   </section>
 
   <section class="panel">
@@ -127,22 +98,6 @@
     </p>
   </div>
 </footer>
-
-<dialog id="conflictDialog" class="dialog">
-  <form id="conflictForm" method="dialog">
-    <h2 class="dialog-title" tabindex="-1" autofocus>どちらの内容を残しますか？</h2>
-    <p class="dialog-text">
-      この端末とGoogle側の両方が、前回の同期のあとで変わっています。勝手に混ぜると数字が狂うので、どちらかを選んでください。
-    </p>
-    <div class="conflict-grid" id="conflictInfo"></div>
-    <p class="note">選ばなかったほうは上書きされます。取り込む場合は、この端末の内容の控えを残します。</p>
-    <div class="dialog-actions">
-      <button type="button" class="btn" data-close>あとで決める</button>
-      <button type="button" class="btn" id="keepRemoteBtn">Google側を使う</button>
-      <button type="button" class="btn btn-primary" id="keepLocalBtn">この端末を使う</button>
-    </div>
-  </form>
-</dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 

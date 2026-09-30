@@ -315,6 +315,7 @@
       history: Array.isArray(p.history) ? p.history.map(normalizePlanBuy).filter((h) => h.shares > 0) : [],
       createdAt: Number(p.createdAt) || Date.now(),
       updatedAt: Number(p.updatedAt) || Date.now(),
+      _u: Number(p._u) || 0,
     };
   }
 
@@ -392,6 +393,7 @@
       proceeds: num(s.proceeds) ?? 0,
       cashApplied: num(s.cashApplied) ?? 0,
       createdAt: Number(s.createdAt) || Date.now(),
+      _u: Number(s._u) || 0,
     };
   }
 
@@ -448,6 +450,8 @@
       quote: h.quote && typeof h.quote === 'object' ? h.quote : null,
       createdAt: Number(h.createdAt) || Date.now(),
       updatedAt: Number(h.updatedAt) || Date.now(),
+      // 端末間の同期で使う更新時刻。落とすとマージのたびに全件が新しい扱いになる。
+      _u: Number(h._u) || 0,
     };
   }
 
@@ -472,6 +476,7 @@
       fee: Math.max(0, num(b.fee) ?? 0),
       kind: b.kind === 'plan' ? 'plan' : 'add',
       createdAt: Number(b.createdAt) || Date.now(),
+      _u: Number(b._u) || 0,
     };
   }
 
@@ -2656,29 +2661,26 @@ ${yutaiLine}
   }
 
   /**
-   * Google同期を設定してあれば、開いたときに新しいほうへ合わせる。
-   * 取り込んだときは画面を作り直す必要があるので読み込み直す。
+   * 端末間の同期を始める。
+   * Googleから戻ってきた直後なら、ログインを始めたページへ返す。
    */
   function startSync() {
-    if (!window.Sync?.isConfigured?.()) return;
-    window.Sync.start().then((result) => {
-      if (!result) return;
-      switch (result.status) {
-        case 'pulled':
-          toast('Googleから最新のデータを取り込みました');
-          setTimeout(() => location.reload(), 900);
-          break;
-        case 'conflict':
-          toast('この端末とGoogle側の両方が変わっています。メニューの「Google同期」でどちらを残すか選んでください');
-          break;
-        case 'error':
-          // まだ一度も接続していないうちは、開くたびに出すとうるさいので黙っておく。
-          if (window.Sync.isConnected()) toast(`同期できませんでした：${result.message}`);
-          break;
-        default:
-          break;
-      }
+    if (!window.Sync) return;
+    const back = window.Sync.start({
+      toast,
+      // 入力中のダイアログがあるあいだは、よその変更を流し込まない
+      busy: () => !!document.querySelector('dialog[open]'),
+      onApplied: () => {
+        load();
+        el.sortBy.value = settings.sort;
+        el.filterAccount.value = settings.account ?? '';
+        el.afterTax.checked = !!settings.afterTax;
+        el.showSold.checked = !!settings.showSold;
+        render();
+        toast('ほかの端末の変更を取り込みました');
+      },
     });
+    if (back && back !== 'index.html') location.replace(back);
   }
 
   init();
