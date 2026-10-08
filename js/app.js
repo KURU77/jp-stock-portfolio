@@ -208,6 +208,9 @@
   /** 候補の並び順。現物株を上に、ETF・REIT、PRO Market は後ろに。 */
   const MARKET_WEIGHT = { P: 0, S: 0, G: 0, '-': 0, O: 1, E: 2, R: 2, X: 3 };
 
+  /** 名証から取ってきた株価か（Yahoo!ファイナンス日本版か、名証の日報）。 */
+  const isNseQuote = (q) => q?.source === 'nse' || q?.source === 'yahoo-jp';
+
   /** 「プライム」「名証メイン」「プライム・名証プレミア」のような表示用の市場名。 */
   function marketLabel(m) {
     const tse = MARKET_LABEL[m?.mk] ?? '';
@@ -1104,10 +1107,13 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     const c = calc(h);
     const chg = c.price != null && h.quote?.prevClose ? c.price - h.quote.prevClose : null;
     const chgRate = chg != null && h.quote.prevClose ? chg / h.quote.prevClose : null;
-    // 名証の銘柄は引け後の日報から読むので、「◯分前」ではなく何の値かを出す。
+    // 名証の銘柄は取得先が東証と違うので、何の値なのかが分かるようにする。
+    // 日報は「10/07の終値」固定、日本版は15分ディレイなので取得時刻も添える。
     const stale = h.quote?.source === 'nse'
       ? (h.quote.sourceLabel || '名証の日報')
-      : (h.quote?.fetchedAt ? relTime(h.quote.fetchedAt) : '未取得');
+      : h.quote?.source === 'yahoo-jp'
+        ? `${relTime(h.quote.fetchedAt)}・名証15分ディレイ`
+        : (h.quote?.fetchedAt ? relTime(h.quote.fetchedAt) : '未取得');
 
     const yutaiBlock = (() => {
       const noteText = h.yutai?.note
@@ -1171,7 +1177,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
   <p class="card-since">取得日 ${esc(h.since)}${buys.some((b) => b.holdingId === h.id) ? `（買付の記録 ${buys.filter((b) => b.holdingId === h.id).length}件）` : ''}</p>
 
   <div class="section-mini">
-    <p class="mini-title">年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}${h.divPerShare != null ? '<span class="badge accent">手入力</span>' : ''}</p>
+    <p class="mini-title">年間配当${settings.afterTax ? (accountOf(h).taxable ? '（税引後）' : '（NISA・非課税）') : '（税引前）'}${h.divPerShare != null ? '<span class="badge accent">手入力</span>' : h.quote?.divForecast ? '<span class="badge">会社予想</span>' : ''}</p>
     <div class="dividend-line">
       <span class="dividend-amount">${esc(yen(c.divShown))}</span>
       <span class="badge">1株 ${c.dps == null ? '—' : esc(`${c.dps.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}円`)}</span>
@@ -1206,7 +1212,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
       const c = calc(h);
       return `
 <tr data-id="${esc(h.id)}">
-  <td>${esc(h.name || h.code)}<br><span class="k" style="font-size:.72rem;color:var(--text-muted)">${esc(h.code)}</span>${h.quote?.source === 'nse' ? ' <span class="badge">名証</span>' : ''}</td>
+  <td>${esc(h.name || h.code)}<br><span class="k" style="font-size:.72rem;color:var(--text-muted)">${esc(h.code)}</span>${isNseQuote(h.quote) ? ' <span class="badge">名証</span>' : ''}</td>
   <td><span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span></td>
   <td>${esc(h.shares.toLocaleString('ja-JP'))}</td>
   <td>${esc(yen(h.avgPrice, 2))}</td>

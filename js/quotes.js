@@ -146,19 +146,34 @@ window.Quotes = (() => {
   async function fetchQuote(code) {
     const symbol = toSymbol(code);
     if (!symbol) throw new Error('証券コードが空です');
-    // 名証にしか上場していない銘柄は Yahoo に無いので、はじめから日報を読む。
-    if (isNseOnly(code)) return fetchNseQuote(code);
+    // 名証にしか上場していない銘柄は英語APIに無いので、はじめから名証の経路で取る。
+    if (isNseOnly(code)) return fetchNseStock(code);
 
     try {
       return await fetchViaRelays(chartUrl(symbol), extract);
     } catch (err) {
-      // 「その銘柄が無い」ときだけ名証の日報も見る。中継が落ちているだけのときに
+      // 「その銘柄が無い」ときだけ名証も見る。中継が落ちているだけのときに
       // 名証の気配値（東証銘柄だと参考にならない）へすり替わらないようにする。
       if (!isMissingSymbol(err)) throw err;
       try {
-        return await fetchNseQuote(code);
+        return await fetchNseStock(code);
       } catch {
         throw err;
+      }
+    }
+  }
+
+  /** 名証の銘柄を取る。Yahoo!ファイナンス日本版を先に見て、だめなら名証の日報へ。
+   *  日本版は15分ディレイの現在値と会社予想の配当まで取れるが、上場したてで
+   *  値が「---」の銘柄もある。そういう銘柄は日報に気配値が載っている。 */
+  async function fetchNseStock(code) {
+    try {
+      return await fetchYjQuote(code);
+    } catch (err) {
+      try {
+        return await fetchNseQuote(code);
+      } catch (err2) {
+        throw new Error(`${err.message} ／ ${err2.message}`);
       }
     }
   }
@@ -195,6 +210,149 @@ window.Quotes = (() => {
       }
     }
     throw new Error(`取得に失敗しました（${errors.join(' / ')}）`);
+  }
+
+  /** 中継サービスを順に試して、本文（テキスト）をそのまま読む版。
+   *  JSONではないページ（HTML・PDF）を読むときに使う。 */
+  async function fetchTextViaRelays(target, extractFn, timeoutMs = TIMEOUT_MS, only = null) {
+    const relays = RELAYS.filter((r) => !only || only.includes(r.name));
+    const errors = [];
+    for (const relay of relays) {
+      try {
+        const text = await fetchText(relay.url(target), timeoutMs);
+        const data = extractFn(text);
+        if (data) {
+          data.relay = relay.name;
+          return data;
+        }
+        errors.push(`${relay.name}: 中身が読めません`);
+      } catch (err) {
+        errors.push(`${relay.name}: ${err.message}`);
+      }
+    }
+    throw new Error(errors.join(' / ') || '取得に失敗しました');
+  }
+
+  // ---------- 名証の銘柄：Yahoo!ファイナンス日本版 ----------
+  //
+  // 名証にしか上場していない銘柄は Yahoo Finance の英語API（query1）には無い。
+  // 素のコードで引くと中身の無い別物（通貨null・2019年で止まったMUTUALFUND）が返る。
+  // 一方で Yahoo!ファイナンス日本版には「7485.N」のような名証ぶんのページがあり、
+  // 15分ディレイの現在値・前日終値・会社予想の配当・時系列（日足）まで載っている。
+  // HTMLなので中継サービスを通して読み、表示されている値だけを取り出す。
+
+  const YJ_TIMEOUT_MS = 20000;
+  /** 時系列は1ページ20営業日。1年ぶん（250営業日）に届くまで並べて取る。 */
+  const YJ_HISTORY_PAGES = 13;
+
+  const yjQuoteUrl = (code) => `https://finance.yahoo.co.jp/quote/${encodeURIComponent(code)}.N`;
+  const yjHistoryUrl = (code, page) => `${yjQuoteUrl(code)}/history?page=${page}`;
+
+  /** Markdown のリンクや HTML のタグを落として、見出しと値だけの文字列にする。 */
+  function stripMarkup(raw) {
+    return String(raw ?? '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\[用語\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/[，]/g, ',');
+  }
+
+  /** 「前日終値  5,150(10/07)」のような項目から数値だけを取り出す。値が「---」なら null。 */
+  function pickLabelled(text, label) {
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const seg = text.match(new RegExp(`${esc}([^\\n*|]{0,40})`));
+    if (!seg) return null;
+    const n = seg[1].match(/([0-9][0-9,]*(?:\.[0-9]+)?)/);
+    return n ? Number(n[1].replace(/,/g, '')) : null;
+  }
+
+  /** 日本版の個別ページから、表示されている値を取り出す。 */
+  function extractYjQuote(raw) {
+    const t = stripMarkup(raw);
+    // 現在値は「前日比」の直前に出る。売買が始まっていない銘柄は「---」なので見つからない。
+    const now = t.match(/([0-9][0-9,]*(?:\.[0-9]+)?)\s*前日比\s*([+\-−±][0-9][0-9,]*(?:\.[0-9]+)?)/);
+    const price = now ? Number(now[1].replace(/,/g, '')) : null;
+    if (!Number.isFinite(price) || price <= 0) {
+      // ページは読めたが値が「---」。その日まだ約定していない銘柄（名証には多い）か、
+      // 寄り付き前。中継を変えても結果は同じなので、ここで打ち切って日報へ回す。
+      return /ディレイ株価|前日終値/.test(t) ? { yjNoPrice: true } : null;
+    }
+
+    const name = (raw.match(/Title:\s*(.+?)【/) || raw.match(/<title>\s*(.+?)【/) || [])[1] || '';
+    const delay = (t.match(/(\d+)分ディレイ/) || [])[1];
+    const dps = pickLabelled(t, '1株配当（会社予想）');
+
+    return {
+      symbol: `${String(raw.match(/quote\/([0-9A-Za-z]+)\.N/)?.[1] ?? '').toUpperCase()}.N`,
+      nameEn: name.trim(),
+      currency: 'JPY',
+      price,
+      prevClose: pickLabelled(t, '前日終値'),
+      open: pickLabelled(t, '始値'),
+      dayHigh: pickLabelled(t, '高値'),
+      dayLow: pickLabelled(t, '安値'),
+      volume: pickLabelled(t, '出来高'),
+      high52: pickLabelled(t, '年初来高値'),
+      low52: pickLabelled(t, '年初来安値'),
+      unit: pickLabelled(t, '単元株数'),
+      marketTime: Math.floor(Date.now() / 1000),
+      // 日本版に載るのは会社予想。英語APIの「直近12か月の実績」とは別物なので印を付ける。
+      divTtm: dps,
+      divForecast: dps != null,
+      divYield: pickLabelled(t, '配当利回り（会社予想）'),
+      divMonths: [],
+      divEvents: [],
+      source: 'yahoo-jp',
+      sourceLabel: `Yahoo!ファイナンス（名証・${delay ? `${delay}分` : ''}ディレイ）`,
+      fetchedAt: Date.now(),
+    };
+  }
+
+  /** 時系列ページ1枚から日足を取り出す。「| 日付 | 始値 | 高値 | 安値 | 終値 | 出来高 | 調整後終値 |」 */
+  function extractYjHistory(raw) {
+    const t = stripMarkup(raw);
+    const re = /(\d{4})\/(\d{1,2})\/(\d{1,2})\s*\|\s*([\d,.]+)\s*\|\s*([\d,.]+)\s*\|\s*([\d,.]+)\s*\|\s*([\d,.]+)\s*\|\s*([\d,.]+)\s*\|\s*([\d,.]+)/g;
+    const num = (s) => Number(String(s).replace(/,/g, ''));
+    const points = [];
+    let m;
+    while ((m = re.exec(t))) {
+      // 調整後終値があればそちらを使う（分割をまたいでも線が飛ばない）。
+      const c = num(m[9]) || num(m[7]);
+      if (!Number.isFinite(c) || c <= 0) continue;
+      const date = `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+      points.push({ date, c });
+    }
+    return points.length ? { points } : null;
+  }
+
+  async function fetchYjQuote(code) {
+    const key = String(code ?? '').trim().toUpperCase();
+    if (!key) throw new Error('証券コードが空です');
+    const q = await fetchTextViaRelays(yjQuoteUrl(key), extractYjQuote, YJ_TIMEOUT_MS);
+    if (q.yjNoPrice) throw new Error('その日の値がまだ出ていません');
+    q.symbol = `${key}.N`;
+    return q;
+  }
+
+  /** 時系列を並べて取って、1年ぶんの日足にする。落ちたページは飛ばして取れたぶんだけ使う。 */
+  async function fetchYjDaily(code) {
+    const key = String(code ?? '').trim().toUpperCase();
+    if (!key) throw new Error('証券コードが空です');
+    const pages = await Promise.allSettled(
+      Array.from({ length: YJ_HISTORY_PAGES }, (_, i) =>
+        fetchTextViaRelays(yjHistoryUrl(key, i + 1), extractYjHistory, YJ_TIMEOUT_MS)),
+    );
+    const byDate = new Map();
+    for (const p of pages) {
+      if (p.status !== 'fulfilled') continue;
+      for (const pt of p.value.points) byDate.set(pt.date, pt.c);
+    }
+    if (byDate.size < 2) throw new Error('時系列が読めませんでした');
+    const points = [...byDate.keys()].sort().map((d) => ({ date: d, c: byDate.get(d) }));
+    return { symbol: `${key}.N`, points, source: 'yahoo-jp', fetchedAt: Date.now() };
   }
 
   // ---------- 名証（名古屋証券取引所）の日報 ----------
@@ -554,17 +712,26 @@ window.Quotes = (() => {
   async function fetchDaily(code) {
     const symbol = toSymbol(code);
     if (!symbol) throw new Error('証券コードが空です');
-    if (isNseOnly(code)) return fetchNseDaily(code);
+    if (isNseOnly(code)) return fetchNseStockDaily(code);
 
     try {
       return await fetchViaRelays(dailyUrl(symbol), extractDaily);
     } catch (err) {
       if (!isMissingSymbol(err)) throw err;
       try {
-        return await fetchNseDaily(code);
+        return await fetchNseStockDaily(code);
       } catch {
         throw err;
       }
+    }
+  }
+
+  /** 名証の銘柄の日足。日本版の時系列が取れればそれを、だめなら日報で貯めたぶんを使う。 */
+  async function fetchNseStockDaily(code) {
+    try {
+      return await fetchYjDaily(code);
+    } catch {
+      return fetchNseDaily(code);
     }
   }
 
