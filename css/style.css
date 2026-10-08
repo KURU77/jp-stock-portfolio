@@ -1533,3 +1533,174 @@ body {
 
 #yearTable td:first-child, #yearTable th:first-child { min-width: 4.5rem; }
 #monthPanel .sales-list { margin-top: .9rem; max-height: 26rem; overflow-y: auto; overscroll-behavior: contain; }
+
+/* ---------- ページ切り替えのナビ ---------- */
+.site-nav {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.nav-inner {
+  display: flex;
+  gap: .2rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+}
+
+.nav-inner::-webkit-scrollbar { display: none; }
+
+.nav-inner a {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .3rem;
+  padding: .5rem .55rem;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  touch-action: manipulation;
+}
+
+.nav-inner a:hover { color: var(--text); }
+
+.nav-inner a.is-current {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ヘッダーのボタンは、狭い画面では記号だけにして1行に収める */
+.btn-icon-text { display: inline-flex; align-items: center; gap: .35rem; }
+
+/* ---------- よく使う操作 ---------- */
+.quick-actions {
+  display: grid;
+  /* ボタンは3つなので、幅が広くても3列までにして余りを作らない */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .6rem;
+  margin: 1rem 0 1.25rem;
+}
+
+@media (max-width: 760px) {
+  .quick-actions { grid-template-columns: 1fr 1fr; }
+}
+
+.quick-btn {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  text-align: left;
+  padding: .7rem .85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color .15s, background .15s;
+}
+
+.quick-btn:hover { border-color: var(--accent); background: var(--accent-weak); }
+
+.quick-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 1.1rem;
+}
+
+.quick-text { display: flex; flex-direction: column; min-width: 0; }
+.quick-text strong { font-size: .88rem; }
+.quick-text small { font-size: .72rem; color: var(--text-muted); }
+
+/* 押せるサマリータイル */
+.stat-action {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color .15s;
+}
+
+.stat-action:hover { border-color: var(--accent); }
+.stat-hint { display: block; font-size: .68rem; color: var(--accent); }
+
+/* ---------- 銘柄のチャート ---------- */
+#stockChartBox { height: 220px; margin-top: .3rem; }
+#stockChartStats { margin-top: .2rem; }
+#stockRange { align-self: flex-start; }
+
+@media (max-width: 560px) {
+  .header-actions .btn-icon-text .btn-label { display: none; }
+  .header-actions .btn-icon-text { padding: .45rem .7rem; font-size: 1rem; }
+  .logo { flex: 1 1 auto; margin-right: auto; font-size: .9rem; }
+  .header-actions { width: auto; }
+  .nav-inner a { font-size: .74rem; padding: .45rem .4rem; }
+  .quick-actions { grid-template-columns: 1fr; gap: .5rem; margin: .8rem 0 1rem; }
+  .quick-btn { padding: .6rem .7rem; }
+  #stockChartBox { height: 190px; }
+}
+
+/* ---------- 狭い画面では、損益の表をカードに組み替える ---------- */
+@media (max-width: 560px) {
+  #yearTable, #unrealizedTable { white-space: normal; }
+  #yearTable thead, #unrealizedTable thead { display: none; }
+  #yearTable, #yearTable tbody, #yearTable tfoot,
+  #unrealizedTable, #unrealizedTable tbody, #unrealizedTable tfoot { display: block; width: 100%; }
+
+  #yearTable tr, #unrealizedTable tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .1rem .6rem;
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: .55rem .7rem;
+    margin-bottom: .5rem;
+  }
+
+  #yearTable td, #unrealizedTable td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .4rem;
+    text-align: right;
+    border: 0;
+    padding: .12rem 0;
+    font-size: .8rem;
+  }
+
+  #yearTable td::before, #unrealizedTable td::before {
+    content: attr(data-label);
+    font-size: .68rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* 見出しになるセル（年・銘柄）は1行まるごと使う */
+  #yearTable td.row-head, #unrealizedTable td.row-head {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: 700;
+    font-size: .92rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: .3rem;
+    margin-bottom: .2rem;
+  }
+
+  #yearTable td.row-head::before, #unrealizedTable td.row-head::before { display: none; }
+  #yearTable td.hide-sm, #unrealizedTable td.hide-sm { display: none; }
+  #yearTable tfoot tr, #unrealizedTable tfoot tr { border: 1px solid var(--accent); }
+  .table-scroll { overflow-x: visible; }
+}

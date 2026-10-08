@@ -275,26 +275,26 @@
 <tbody>
   ${years.map((y) => `
   <tr>
-    <td>${esc(y.year)}年</td>
-    <td>${y.count}件</td>
-    <td>${esc(yen(y.gross))}</td>
-    <td class="${cls(y.realized)}">${esc(signed(y.realized))}</td>
-    <td class="${cls(y.taxable)}">${esc(signed(y.taxable))}</td>
-    <td class="${cls(y.nisa)}">${y.nisa === 0 ? '—' : esc(signed(y.nisa))}</td>
-    <td>${y.tax ? `-${esc(yen(y.tax))}` : '0円'}</td>
-    <td class="${cls(y.net)}">${esc(signed(y.net))}</td>
+    <td data-label="年" class="row-head">${esc(y.year)}年</td>
+    <td data-label="売却">${y.count}件</td>
+    <td data-label="売却代金">${esc(yen(y.gross))}</td>
+    <td data-label="実現損益" class="${cls(y.realized)}">${esc(signed(y.realized))}</td>
+    <td data-label="うち課税口座" class="${cls(y.taxable)}">${esc(signed(y.taxable))}</td>
+    <td data-label="うちNISA" class="${cls(y.nisa)}">${y.nisa === 0 ? '—' : esc(signed(y.nisa))}</td>
+    <td data-label="税額の目安">${y.tax ? `-${esc(yen(y.tax))}` : '0円'}</td>
+    <td data-label="手取り" class="${cls(y.net)}">${esc(signed(y.net))}</td>
   </tr>`).join('')}
 </tbody>
 <tfoot>
   <tr>
-    <td>合計</td>
-    <td>${totals.count}件</td>
-    <td>${esc(yen(totals.gross))}</td>
-    <td class="${cls(totals.realized)}">${esc(signed(totals.realized))}</td>
-    <td class="${cls(totals.taxable)}">${esc(signed(totals.taxable))}</td>
-    <td class="${cls(totals.nisa)}">${totals.nisa === 0 ? '—' : esc(signed(totals.nisa))}</td>
-    <td>${totals.tax ? `-${esc(yen(totals.tax))}` : '0円'}</td>
-    <td class="${cls(totals.net)}">${esc(signed(totals.net))}</td>
+    <td data-label="年" class="row-head">合計</td>
+    <td data-label="売却">${totals.count}件</td>
+    <td data-label="売却代金">${esc(yen(totals.gross))}</td>
+    <td data-label="実現損益" class="${cls(totals.realized)}">${esc(signed(totals.realized))}</td>
+    <td data-label="うち課税口座" class="${cls(totals.taxable)}">${esc(signed(totals.taxable))}</td>
+    <td data-label="うちNISA" class="${cls(totals.nisa)}">${totals.nisa === 0 ? '—' : esc(signed(totals.nisa))}</td>
+    <td data-label="税額の目安">${totals.tax ? `-${esc(yen(totals.tax))}` : '0円'}</td>
+    <td data-label="手取り" class="${cls(totals.net)}">${esc(signed(totals.net))}</td>
   </tr>
 </tfoot>`;
 
@@ -359,24 +359,24 @@
 <tbody>
   ${rows.map((r) => `
   <tr>
-    <td>${esc(r.name)}<br><span style="font-size:.72rem;color:var(--text-muted)">${esc(r.code)}</span></td>
-    <td><span class="badge ${r.account.taxable ? '' : 'ok'}">${esc(r.account.short)}</span></td>
-    <td>${r.shares.toLocaleString('ja-JP')}</td>
-    <td>${esc(yen(r.cost))}</td>
-    <td>${r.value == null ? '株価未取得' : esc(yen(r.value))}</td>
-    <td class="${cls(r.pl)}">${esc(signed(r.pl))}</td>
-    <td class="${cls(r.pl)}">${esc(pct(r.rate))}</td>
-    <td>${esc(r.since || '—')}</td>
+    <td data-label="銘柄" class="row-head">${esc(r.name)}<br><span style="font-size:.72rem;color:var(--text-muted)">${esc(r.code)}</span></td>
+    <td data-label="口座"><span class="badge ${r.account.taxable ? '' : 'ok'}">${esc(r.account.short)}</span></td>
+    <td data-label="株数">${r.shares.toLocaleString('ja-JP')}</td>
+    <td data-label="取得金額">${esc(yen(r.cost))}</td>
+    <td data-label="評価額">${r.value == null ? '株価未取得' : esc(yen(r.value))}</td>
+    <td data-label="含み損益" class="${cls(r.pl)}">${esc(signed(r.pl))}</td>
+    <td data-label="損益率" class="${cls(r.pl)}">${esc(pct(r.rate))}</td>
+    <td data-label="取得日">${esc(r.since || '—')}</td>
   </tr>`).join('')}
 </tbody>
 <tfoot>
   <tr>
-    <td>合計</td><td></td><td></td>
-    <td>${esc(yen(total.cost))}</td>
-    <td>${esc(yen(total.value))}</td>
-    <td class="${cls(total.pl)}">${esc(signed(total.pl))}</td>
-    <td class="${cls(total.pl)}">${esc(pct(total.cost > 0 ? total.pl / total.cost : null))}</td>
-    <td></td>
+    <td data-label="銘柄" class="row-head">合計</td><td class="hide-sm"></td><td class="hide-sm"></td>
+    <td data-label="取得金額">${esc(yen(total.cost))}</td>
+    <td data-label="評価額">${esc(yen(total.value))}</td>
+    <td data-label="含み損益" class="${cls(total.pl)}">${esc(signed(total.pl))}</td>
+    <td data-label="損益率" class="${cls(total.pl)}">${esc(pct(total.cost > 0 ? total.pl / total.cost : null))}</td>
+    <td class="hide-sm"></td>
   </tr>
 </tfoot>`;
 

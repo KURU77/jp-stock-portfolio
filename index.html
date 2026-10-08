@@ -34,11 +34,9 @@
       <div class="menu">
         <button type="button" id="menuBtn" class="icon-btn" title="メニュー" aria-label="メニュー" aria-haspopup="true" aria-expanded="false">⋯</button>
         <div class="menu-list" id="menuList" role="menu" hidden>
-          <a href="profit.html" role="menuitem">💰 損益のまとめ</a>
-          <a href="sync.html" role="menuitem">🔄 Google同期</a>
           <a href="review.html" role="menuitem">🤖 AIレビュー</a>
-          <button type="button" id="menuAddPlanBtn" role="menuitem">積み立てを追加</button>
-          <button type="button" id="cashBtn" role="menuitem">投資余力を入力</button>
+          <button type="button" id="menuAddPlanBtn" role="menuitem">＋ 積み立てを追加</button>
+          <button type="button" id="cashBtn" role="menuitem">💴 投資余力を入力</button>
           <button type="button" id="settingsBtn" role="menuitem">設定</button>
           <button type="button" id="exportBtn" role="menuitem">JSONで書き出し</button>
           <button type="button" id="importBtn" role="menuitem">JSONを読み込み</button>
@@ -46,12 +44,24 @@
           <button type="button" id="clearBtn" role="menuitem" class="danger">すべて削除</button>
         </div>
       </div>
-      <a class="btn" href="chart.html" title="資産のグラフ">📊 グラフ</a>
-      <a class="btn" href="night.html" title="夜間PTSと場中の値動き">🌙 夜間PTS</a>
-      <button type="button" id="refreshBtn" class="btn">株価を更新</button>
-      <button type="button" id="addBtn" class="btn btn-primary">＋ 銘柄を追加</button>
+      <button type="button" id="refreshBtn" class="btn btn-icon-text" title="株価を更新">
+        <span aria-hidden="true">⟳</span><span class="btn-label">株価を更新</span>
+      </button>
+      <button type="button" id="addBtn" class="btn btn-primary btn-icon-text" title="銘柄を追加">
+        <span aria-hidden="true">＋</span><span class="btn-label">銘柄を追加</span>
+      </button>
     </div>
   </div>
+
+  <nav class="site-nav" aria-label="ページの切り替え">
+    <div class="wrap nav-inner">
+      <a href="./" class="is-current" aria-current="page"><span aria-hidden="true">📈</span>保有</a>
+      <a href="profit.html"><span aria-hidden="true">💰</span>損益</a>
+      <a href="chart.html"><span aria-hidden="true">📊</span>グラフ</a>
+      <a href="night.html"><span aria-hidden="true">🌙</span>夜間PTS</a>
+      <a href="sync.html"><span aria-hidden="true">🔄</span>同期</a>
+    </div>
+  </nav>
 </header>
 
 <main class="wrap">
@@ -63,8 +73,26 @@
     <div class="stat"><span class="stat-value" id="statDiv">—</span><span class="stat-label" id="statDivLabel">年間配当</span></div>
     <div class="stat"><span class="stat-value" id="statYutai">—</span><span class="stat-label">優待（年・目安）</span></div>
     <div class="stat"><span class="stat-value" id="statYield">—</span><span class="stat-label">総合利回り（取得ベース）</span></div>
-    <div class="stat"><span class="stat-value" id="statCash">—</span><span class="stat-label">投資余力（現金）</span></div>
+    <button type="button" class="stat stat-action" id="cashTile" title="投資余力を入力する">
+      <span class="stat-value" id="statCash">—</span>
+      <span class="stat-label">投資余力（現金）<span class="stat-hint">タップで入力</span></span>
+    </button>
     <div class="stat"><span class="stat-value" id="statAssets">—</span><span class="stat-label">資産合計（株＋現金）</span></div>
+  </section>
+
+  <section class="quick-actions" aria-label="よく使う操作">
+    <button type="button" class="quick-btn" id="quickAddBtn">
+      <span class="quick-icon" aria-hidden="true">＋</span>
+      <span class="quick-text"><strong>銘柄を追加</strong><small>取得単価と株数を記録</small></span>
+    </button>
+    <button type="button" class="quick-btn" id="quickPlanBtn">
+      <span class="quick-icon" aria-hidden="true">🗓</span>
+      <span class="quick-text"><strong>積み立てを追加</strong><small>毎月いくら買うかを設定</small></span>
+    </button>
+    <button type="button" class="quick-btn" id="quickCashBtn">
+      <span class="quick-icon" aria-hidden="true">💴</span>
+      <span class="quick-text"><strong>投資余力を入力</strong><small>入金・出金を増減で反映</small></span>
+    </button>
   </section>
 
   <p class="updated-line" id="updatedLine" hidden></p>
@@ -116,17 +144,6 @@
     右上の「＋ 銘柄を追加」から、証券コード・取得単価・株数を入力してください。
   </p>
 
-  <section class="panel" id="calendarPanel" aria-label="配当スケジュール" hidden>
-    <h2 class="panel-title">配当の受け取り月（権利確定月ベース・目安）</h2>
-    <div class="calendar" id="calendar"></div>
-    <p class="note">直近1年の権利落ち日から推計しています。実際の入金は権利確定の2〜3か月後になることが多いです。</p>
-  </section>
-
-  <section class="panel" id="yutaiPanel" aria-label="優待一覧" hidden>
-    <h2 class="panel-title">いま受け取れる株主優待</h2>
-    <ul class="yutai-list" id="yutaiList"></ul>
-  </section>
-
   <section class="panel" id="planPanel" aria-label="積み立て設定" hidden>
     <div class="panel-head">
       <h2 class="panel-title">毎月の積み立て</h2>
@@ -139,6 +156,18 @@
       余った金額は繰り越さず、買付額と一緒に表示します。実際の約定価格・手数料は証券会社の明細で確認してください。
     </p>
   </section>
+
+  <section class="panel" id="calendarPanel" aria-label="配当スケジュール" hidden>
+    <h2 class="panel-title">配当の受け取り月（権利確定月ベース・目安）</h2>
+    <div class="calendar" id="calendar"></div>
+    <p class="note">直近1年の権利落ち日から推計しています。実際の入金は権利確定の2〜3か月後になることが多いです。</p>
+  </section>
+
+  <section class="panel" id="yutaiPanel" aria-label="優待一覧" hidden>
+    <h2 class="panel-title">いま受け取れる株主優待</h2>
+    <ul class="yutai-list" id="yutaiList"></ul>
+  </section>
+
 
   <section class="panel" id="salesPanel" aria-label="売却履歴" hidden>
     <h2 class="panel-title">売却履歴（実現損益）</h2>
@@ -283,6 +312,33 @@
     <div class="dialog-actions">
       <button type="button" class="btn" data-close>キャンセル</button>
       <button type="submit" class="btn btn-primary">平均取得単価を更新</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ---------- 銘柄のチャート ---------- -->
+<dialog id="stockChartDialog" class="dialog dialog-wide">
+  <form id="stockChartForm" method="dialog">
+    <h2 class="dialog-title" tabindex="-1" autofocus id="stockChartTitle">チャート</h2>
+    <p class="dialog-sub" id="stockChartSub"></p>
+
+    <div class="segmented" id="stockRange" role="group" aria-label="期間">
+      <button type="button" data-days="22" aria-pressed="false">1か月</button>
+      <button type="button" data-days="62" aria-pressed="false">3か月</button>
+      <button type="button" data-days="125" aria-pressed="false">6か月</button>
+      <button type="button" data-days="250" class="is-on" aria-pressed="true">1年</button>
+    </div>
+
+    <div class="chart-box is-interactive" id="stockChartBox"></div>
+    <div class="chart-legend" id="stockChartLegend"></div>
+    <div class="kv kv-4" id="stockChartStats"></div>
+    <p class="note">
+      終値の折れ線です（Yahoo Finance・15〜20分の遅延あり）。点線は平均取得単価で、どのあたりで買ったかの目安になります。
+      タップするとその日の日付と終値が出ます。
+    </p>
+
+    <div class="dialog-actions">
+      <button type="submit" class="btn btn-primary">閉じる</button>
     </div>
   </form>
 </dialog>

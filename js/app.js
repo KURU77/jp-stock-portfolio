@@ -109,6 +109,15 @@
     cashForm: $('#cashForm'),
     cashRows: $('#cashRows'),
     cashAbsolute: $('#cashAbsolute'),
+    // 銘柄のチャート
+    stockChartDialog: $('#stockChartDialog'),
+    stockChartTitle: $('#stockChartTitle'),
+    stockChartSub: $('#stockChartSub'),
+    stockChartBox: $('#stockChartBox'),
+    stockChartLegend: $('#stockChartLegend'),
+    stockChartStats: $('#stockChartStats'),
+    stockRange: $('#stockRange'),
+    cashTile: $('#cashTile'),
     // 積み立て
     planPanel: $('#planPanel'),
     planSummary: $('#planSummary'),
@@ -1162,6 +1171,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
   ${h.memo ? `<p class="memo">${esc(h.memo)}</p>` : ''}
 
   <div class="card-actions">
+    <button type="button" class="btn" data-act="chart">📈 チャート</button>
     <button type="button" class="btn" data-act="sim">シミュレーション</button>
     <button type="button" class="btn" data-act="buy">買い増し</button>
     ${empty ? '' : '<button type="button" class="btn" data-act="sell">売却</button>'}
@@ -1190,7 +1200,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
   <td>${esc(yen(c.divShown))}</td>
   <td>${esc(pct(c.yieldNow))}</td>
   <td>${c.tier ? esc(yen(c.yutaiValue)) : '—'}</td>
-  <td><button type="button" class="row-btn" data-act="sim">試算</button></td>
+  <td><button type="button" class="row-btn" data-act="chart">チャート</button> <button type="button" class="row-btn" data-act="sim">試算</button></td>
 </tr>`;
     }).join('');
 
@@ -2126,6 +2136,182 @@ ${yutaiLine}
 <p class="sim-note">追加ぶんは現在値（${h.quote?.price != null ? yen(h.quote.price, 1) : '未取得のため取得単価'}）で買えたものとして計算しています。配当は1株あたり ${before.dps != null ? `${before.dps}円` : '不明'} が続く前提です。</p>`;
   }
 
+  // ---------- 銘柄のチャート ----------
+
+  /** 日足はグラフページと同じ置き場を使い回す */
+  const DAILY_KEY = 'jp-stock-portfolio.daily.v1';
+
+  const chartView = { holdingId: null, points: [], days: 250, cursor: null };
+
+  function readDaily() {
+    try { return JSON.parse(localStorage.getItem(DAILY_KEY) || '{}') ?? {}; } catch { return {}; }
+  }
+
+  async function openStockChart(id) {
+    const h = holdings.find((x) => x.id === id);
+    if (!h) return;
+    chartView.holdingId = id;
+    chartView.cursor = null;
+
+    el.stockChartTitle.textContent = `${h.name || h.code} のチャート`;
+    el.stockChartSub.textContent = `${h.code}・${accountOf(h).label}・${h.shares.toLocaleString('ja-JP')}株（平均取得単価 ${yen(h.avgPrice, 2)}）`;
+    el.stockChartBox.innerHTML = '<p class="chart-empty">読み込み中…</p>';
+    el.stockChartLegend.innerHTML = '';
+    el.stockChartStats.innerHTML = '';
+    el.stockChartDialog.showModal();
+
+    const cached = readDaily()[h.code];
+    // 当日ぶんが入っていないキャッシュは取り直す
+    const fresh = cached && Date.now() - (cached.fetchedAt || 0) < 12 * 3600 * 1000;
+    if (cached?.points?.length) {
+      chartView.points = cached.points;
+      drawStockChart();
+    }
+    if (fresh) return;
+
+    try {
+      const data = await window.Quotes.fetchDaily(h.code);
+      const store = readDaily();
+      store[h.code] = { points: data.points, fetchedAt: data.fetchedAt };
+      try { localStorage.setItem(DAILY_KEY, JSON.stringify(store)); } catch { /* 容量は諦める */ }
+      if (chartView.holdingId !== id) return;
+      chartView.points = data.points;
+      drawStockChart();
+    } catch (err) {
+      console.warn(`${h.code} の日足が取れません`, err);
+      if (!chartView.points.length) {
+        el.stockChartBox.innerHTML = `<p class="chart-empty">日足を取得できませんでした。<br>${esc(err.message)}</p>`;
+      }
+    }
+  }
+
+  function drawStockChart() {
+    const h = holdings.find((x) => x.id === chartView.holdingId);
+    const all = chartView.points;
+    if (!h || all.length < 2) return;
+
+    const rows = all.slice(-chartView.days);
+    const box = el.stockChartBox;
+    const W = Math.max(280, Math.round(box.clientWidth || 320));
+    const H = Math.max(180, Math.round(box.clientHeight || 220));
+    const padL = 52, padR = 10, padT = 12, padB = 24;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const closes = rows.map((p) => p.c);
+    const avg = h.avgPrice > 0 ? h.avgPrice : null;
+    const values = avg ? [...closes, avg] : closes;
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    if (min === max) { min -= 1; max += 1; }
+    const pad = (max - min) * 0.08;
+    min -= pad;
+    max += pad;
+    const span = max - min;
+
+    const x = (i) => padL + (i / (rows.length - 1)) * innerW;
+    const y = (v) => padT + (1 - (v - min) / span) * innerH;
+
+    const ticks = [0, 0.5, 1].map((r) => min + span * r);
+    const grid = ticks.map((v) => `
+  <line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+  <text x="${padL - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end" class="axis">${esc(Math.round(v).toLocaleString('ja-JP'))}</text>`).join('');
+
+    const step = Math.max(1, Math.round((rows.length - 1) / 3));
+    const xIdx = [];
+    for (let i = 0; i < rows.length; i += step) xIdx.push(i);
+    if (xIdx[xIdx.length - 1] !== rows.length - 1) xIdx.push(rows.length - 1);
+    const axis = xIdx.map((i) => `
+  <text x="${x(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" class="axis">${esc(`${Number(rows[i].date.slice(5, 7))}/${Number(rows[i].date.slice(8, 10))}`)}</text>`).join('');
+
+    const last = closes[closes.length - 1];
+    const first = closes[0];
+    const up = last >= first;
+    const color = up ? 'var(--up)' : 'var(--down)';
+    const line = rows.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.c).toFixed(1)}`).join(' ');
+    const area = `${line} L${x(rows.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} L${padL},${(padT + innerH).toFixed(1)} Z`;
+    const avgLine = avg
+      ? `<line x1="${padL}" y1="${y(avg).toFixed(1)}" x2="${W - padR}" y2="${y(avg).toFixed(1)}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="5 4"/>`
+      : '';
+
+    box.innerHTML = `
+<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="株価のチャート">
+  ${grid}
+  <path d="${area}" fill="${color}" opacity=".10"/>
+  ${avgLine}
+  <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  ${axis}
+  <g class="cross" hidden>
+    <line class="cross-line" x1="0" x2="0" y1="${padT}" y2="${padT + innerH}"/>
+    <circle class="cross-dot" r="4" fill="${color}"/>
+  </g>
+</svg>
+<div class="chart-tip" hidden></div>`;
+
+    const high = Math.max(...closes);
+    const low = Math.min(...closes);
+    const diff = last - first;
+    el.stockChartLegend.innerHTML = `
+<span class="legend-item"><span class="legend-swatch" style="background:${color}"></span>終値<strong>${esc(yen(last, 1))}</strong></span>
+<span class="legend-item"><span class="legend-swatch" style="background:var(--accent)"></span>平均取得単価<strong>${esc(yen(h.avgPrice, 2))}</strong></span>
+<span class="legend-item">この期間<strong class="${plClass(diff)}">${esc(signed(diff))}（${first ? `${diff > 0 ? '+' : ''}${((diff / first) * 100).toFixed(2)}%` : '—'}）</strong></span>`;
+
+    const c = calc(h);
+    el.stockChartStats.innerHTML = `
+<div><p class="k">期間の高値</p><p class="v">${esc(yen(high, 1))}</p></div>
+<div><p class="k">期間の安値</p><p class="v">${esc(yen(low, 1))}</p></div>
+<div><p class="k">評価額</p><p class="v">${esc(yen(c.value))}</p></div>
+<div><p class="k">評価損益</p><p class="v ${plClass(c.pl)}">${esc(signed(c.pl))}</p></div>`;
+
+    chartView.geom = { W, H, padL, innerW, x, y, rows };
+    if (chartView.cursor != null) moveStockCursor(chartView.cursor);
+  }
+
+  function moveStockCursor(i) {
+    const g = chartView.geom;
+    const svg = el.stockChartBox.querySelector('svg');
+    const tip = el.stockChartBox.querySelector('.chart-tip');
+    if (!g || !svg || !tip) return;
+    const row = g.rows[i];
+    if (!row) return;
+    chartView.cursor = i;
+
+    const group = svg.querySelector('.cross');
+    group.removeAttribute('hidden');
+    const cx = g.x(i);
+    group.querySelector('.cross-line').setAttribute('x1', cx.toFixed(1));
+    group.querySelector('.cross-line').setAttribute('x2', cx.toFixed(1));
+    const dot = group.querySelector('.cross-dot');
+    dot.setAttribute('cx', cx.toFixed(1));
+    dot.setAttribute('cy', g.y(row.c).toFixed(1));
+
+    const h = holdings.find((x) => x.id === chartView.holdingId);
+    const diff = h && h.avgPrice > 0 ? row.c - h.avgPrice : null;
+    tip.innerHTML = `
+<span class="tip-date">${esc(`${row.date.slice(0, 4)}年${Number(row.date.slice(5, 7))}月${Number(row.date.slice(8, 10))}日`)}</span>
+<span class="tip-row">終値<strong>${esc(yen(row.c, 1))}</strong></span>
+${diff == null ? '' : `<span class="tip-row tip-extra">取得単価との差<strong class="${plClass(diff)}">${esc(signed(diff))}</strong></span>`}`;
+    tip.hidden = false;
+
+    const boxW = el.stockChartBox.clientWidth;
+    const px = (cx / g.W) * boxW;
+    const tipW = tip.offsetWidth || 140;
+    let left = px + 12;
+    if (left + tipW > boxW - 4) left = px - tipW - 12;
+    tip.style.left = `${Math.max(4, Math.min(left, boxW - tipW - 4))}px`;
+  }
+
+  function stockCursorFromClientX(clientX) {
+    const g = chartView.geom;
+    if (!g) return null;
+    const rect = el.stockChartBox.getBoundingClientRect();
+    if (!rect.width) return null;
+    const vx = ((clientX - rect.left) / rect.width) * g.W;
+    const i = Math.round(((vx - g.padL) / g.innerW) * (g.rows.length - 1));
+    if (!Number.isFinite(i)) return null;
+    return Math.min(Math.max(i, 0), g.rows.length - 1);
+  }
+
   // ---------- 株価の取得 ----------
 
   function requestQuotes(ids, opts = {}) {
@@ -2414,6 +2600,7 @@ ${yutaiLine}
       const id = closestId(btn);
       if (!id) return;
       switch (btn.dataset.act) {
+        case 'chart': openStockChart(id); break;
         case 'sim': openSimDialog(id); break;
         case 'buy': openBuyDialog(id); break;
         case 'sell': openSellDialog(id); break;
@@ -2544,6 +2731,36 @@ ${yutaiLine}
       if (!btn) return;
       el.sellShares.value = btn.dataset.sellShares;
       updateSellPreview();
+    });
+
+    // よく使う操作（探しにくかったので、画面の上のほうにも置いている）
+    $('#quickAddBtn').addEventListener('click', () => openHoldingDialog(null));
+    $('#quickPlanBtn').addEventListener('click', () => openPlanDialog(null));
+    $('#quickCashBtn').addEventListener('click', openCashDialog);
+    el.cashTile.addEventListener('click', openCashDialog);
+
+    // 銘柄のチャート
+    el.stockRange.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-days]');
+      if (!btn) return;
+      chartView.days = Number(btn.dataset.days);
+      chartView.cursor = null;
+      for (const b of el.stockRange.querySelectorAll('button')) {
+        const on = b === btn;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+      }
+      drawStockChart();
+    });
+
+    el.stockChartBox.addEventListener('pointerdown', (e) => {
+      const i = stockCursorFromClientX(e.clientX);
+      if (i != null) moveStockCursor(i);
+    });
+    el.stockChartBox.addEventListener('pointermove', (e) => {
+      if (e.buttons !== 1 && e.pointerType === 'mouse') return;
+      const i = stockCursorFromClientX(e.clientX);
+      if (i != null) { moveStockCursor(i); e.preventDefault(); }
     });
 
     // 投資余力
