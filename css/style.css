@@ -1514,3 +1514,22 @@ body {
   font-size: .8rem;
   line-height: 1.6;
 }
+
+/* ---------- 損益のまとめ ---------- */
+.chart .bar-value { font-size: 9px; fill: var(--text-muted); }
+.gap-note { margin-top: .5rem; }
+.sale-pl { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+#monthPanel .panel-head select {
+  font: inherit;
+  font-size: .85rem;
+  padding: .3rem .6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  margin-left: auto;
+}
+
+#yearTable td:first-child, #yearTable th:first-child { min-width: 4.5rem; }
+#monthPanel .sales-list { margin-top: .9rem; max-height: 26rem; overflow-y: auto; overscroll-behavior: contain; }

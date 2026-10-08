@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>損益のまとめ｜日本株ポートフォリオ</title>
+<meta name="description" content="売買の履歴から、年ごとの確定した利益（実現損益）と、まだ売っていない分の含み損益をまとめて確認するページ。">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161b" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="損益のまとめ">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <h1 class="logo"><span aria-hidden="true">💰</span> 損益のまとめ</h1>
+    <div class="header-actions">
+      <button type="button" id="themeToggle" class="icon-btn" title="テーマ切り替え" aria-label="テーマ切り替え">🌙</button>
+      <a class="btn" href="./">← ポートフォリオ</a>
+      <a class="btn" href="chart.html">📊 グラフ</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="stats" aria-label="いまの損益">
+    <div class="stat">
+      <span class="stat-value" id="statUnrealized">—</span>
+      <span class="stat-label">含み損益（まだ売っていない分）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statThisYear">—</span>
+      <span class="stat-label" id="statThisYearLabel">今年の確定利益（税引前）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statThisYearNet">—</span>
+      <span class="stat-label">今年の手取り（税額の目安を引いた後）</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="statTotal">—</span>
+      <span class="stat-label">今年の確定＋含み</span>
+    </div>
+  </section>
+
+  <p class="empty" id="empty" hidden>
+    まだ売買の記録がありません。<br>
+    <a href="./">ポートフォリオ</a>で銘柄を登録し、売却を記録するとここにまとまります。
+  </p>
+
+  <section class="panel" id="yearPanel" aria-label="年ごとの確定利益">
+    <h2 class="panel-title">年ごとの確定した利益（実現損益）</h2>
+    <div class="chart-box chart-box-auto" id="yearChart"></div>
+    <div class="table-scroll">
+      <table class="holdings-table" id="yearTable"></table>
+    </div>
+    <p class="note">
+      実現損益は「（売却単価 − 平均取得単価）× 株数 − 手数料」の合計です。
+      <strong>税額の目安</strong>は、その年の課税口座（特定・一般）の実現損益を合算し、プラスのときだけ税率をかけています（年内の損は利益と相殺＝損益通算）。
+      NISAは非課税なので計算に入れていません。実際の税額は他の口座や配当との通算、前年までの繰越控除で変わります。
+    </p>
+  </section>
+
+  <section class="panel" id="monthPanel" aria-label="月ごとの確定利益">
+    <div class="panel-head">
+      <h2 class="panel-title">月ごとの内訳</h2>
+      <select id="yearSelect" aria-label="年を選ぶ"></select>
+    </div>
+    <div class="chart-box" id="monthChart"></div>
+    <ul class="sales-list" id="monthList"></ul>
+  </section>
+
+  <section class="panel" id="unrealizedPanel" aria-label="含み損益の内訳">
+    <h2 class="panel-title">含み損益の内訳（いま持っている分）</h2>
+    <div class="table-scroll">
+      <table class="holdings-table" id="unrealizedTable"></table>
+    </div>
+    <p class="note" id="dividendNote"></p>
+  </section>
+
+  <section class="panel">
+    <h2 class="panel-title">この数字について</h2>
+    <ul class="dialog-list">
+      <li><strong>含み損益</strong>は「いまの株価 − 平均取得単価 × 株数」です。株価は取得した時点のもので、15〜20分の遅れがあります。</li>
+      <li><strong>確定した利益</strong>は、このアプリに記録した売却だけを集計しています。記録していない売買は入りません。</li>
+      <li><strong>配当は含みません。</strong>受け取りの履歴を持っていないためです（年間の見込み額は下に参考として出しています）。</li>
+      <li>税額はあくまで目安です。確定申告や特定口座の年間取引報告書の数字とは一致しないことがあります。</li>
+    </ul>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="note">
+      表示される数値はすべて参考値です。本アプリは投資助言・税務助言を行うものではありません。
+      <a href="privacy.html">プライバシーについて</a>
+    </p>
+  </div>
+</footer>
+
+<script src="js/profit.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW登録に失敗', err));
+    });
+  }
+</script>
+</body>
+</html>
