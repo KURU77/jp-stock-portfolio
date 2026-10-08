@@ -194,25 +194,40 @@
 
   // ---------- 銘柄マスタ（js/stocks.js） ----------
 
-  /** @type {Array<{code:string,name:string,mk:string,key:string}>} */
+  /** @type {Array<{code:string,name:string,mk:string,nse:string,key:string}>} */
   const master = [];
   const masterByCode = new Map();
 
   const MARKET_LABEL = {
     P: 'プライム', S: 'スタンダード', G: 'グロース',
     E: 'ETF・ETN', R: 'REIT等', O: '出資証券', X: 'PRO Market',
+    '-': '', // 東証には上場していない（名証単独）
   };
+  /** 名証の区分。東証の市場と同じ文字を使うので、こちらは別の表で持つ。 */
+  const NSE_LABEL = { P: '名証プレミア', M: '名証メイン', N: '名証ネクスト', E: '名証ETF' };
   /** 候補の並び順。現物株を上に、ETF・REIT、PRO Market は後ろに。 */
-  const MARKET_WEIGHT = { P: 0, S: 0, G: 0, O: 1, E: 2, R: 2, X: 3 };
+  const MARKET_WEIGHT = { P: 0, S: 0, G: 0, '-': 0, O: 1, E: 2, R: 2, X: 3 };
+
+  /** 「プライム」「名証メイン」「プライム・名証プレミア」のような表示用の市場名。 */
+  function marketLabel(m) {
+    const tse = MARKET_LABEL[m?.mk] ?? '';
+    const nse = NSE_LABEL[m?.nse] ?? '';
+    // 両方に上場しているときは東証だけ出す（候補欄が狭いので）。
+    return tse || nse;
+  }
 
   function initMaster() {
+    const nseOnly = [];
     for (const line of String(window.STOCK_MASTER_RAW ?? '').split('\n')) {
-      const [code, name, mk] = line.split('\t');
+      const [code, name, mk, nse] = line.split('\t');
       if (!code || !name) continue;
-      const item = { code, name, mk: mk || 'X', key: `${code} ${name}`.toLowerCase() };
+      const item = { code, name, mk: mk || 'X', nse: nse || '', key: `${code} ${name}`.toLowerCase() };
       master.push(item);
       masterByCode.set(code, item);
+      // 名証にしか上場していない銘柄は Yahoo に無いので、株価の取得先を変える必要がある。
+      if (item.mk === '-') nseOnly.push(code);
     }
+    window.Quotes?.setNseOnlyCodes?.(nseOnly);
   }
 
   /** 全角の英数字を半角へ。iPhoneの日本語キーボードだと全角で入ることがある。 */
@@ -1089,7 +1104,10 @@ ${[...byAccount.entries()].map(([account, amount]) => {
     const c = calc(h);
     const chg = c.price != null && h.quote?.prevClose ? c.price - h.quote.prevClose : null;
     const chgRate = chg != null && h.quote.prevClose ? chg / h.quote.prevClose : null;
-    const stale = h.quote?.fetchedAt ? relTime(h.quote.fetchedAt) : '未取得';
+    // 名証の銘柄は引け後の日報から読むので、「◯分前」ではなく何の値かを出す。
+    const stale = h.quote?.source === 'nse'
+      ? (h.quote.sourceLabel || '名証の日報')
+      : (h.quote?.fetchedAt ? relTime(h.quote.fetchedAt) : '未取得');
 
     const yutaiBlock = (() => {
       const noteText = h.yutai?.note
@@ -1188,7 +1206,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
       const c = calc(h);
       return `
 <tr data-id="${esc(h.id)}">
-  <td>${esc(h.name || h.code)}<br><span class="k" style="font-size:.72rem;color:var(--text-muted)">${esc(h.code)}</span></td>
+  <td>${esc(h.name || h.code)}<br><span class="k" style="font-size:.72rem;color:var(--text-muted)">${esc(h.code)}</span>${h.quote?.source === 'nse' ? ' <span class="badge">名証</span>' : ''}</td>
   <td><span class="badge ${accountOf(h).taxable ? '' : 'ok'}">${esc(accountOf(h).short)}</span></td>
   <td>${esc(h.shares.toLocaleString('ja-JP'))}</td>
   <td>${esc(yen(h.avgPrice, 2))}</td>
@@ -1384,7 +1402,7 @@ ${[...byAccount.entries()].map(([account, amount]) => {
   <button type="button" data-code="${esc(m.code)}">
     <span class="sg-code">${esc(m.code)}</span>
     <span class="sg-name">${esc(m.name)}</span>
-    <span class="sg-mk">${esc(MARKET_LABEL[m.mk] ?? '')}</span>
+    <span class="sg-mk">${esc(marketLabel(m))}</span>
   </button>
 </li>`).join('');
     list.hidden = false;
@@ -2852,9 +2870,12 @@ ${diff == null ? '' : `<span class="tip-row tip-extra">取得単価との差<str
     initMaster();
 
     if (master.length && window.STOCK_MASTER_AS_OF) {
+      const nseOnly = master.filter((m) => m.mk === '-').length;
       $('#codeHint').textContent =
-        `東証の全上場銘柄（${master.length.toLocaleString('ja-JP')}件・${window.STOCK_MASTER_AS_OF}時点）から検索できます。`
-        + '数字4桁のコードのほか、186A のような英数字コードや銘柄名（ispace・神島化学 など）でも探せます。';
+        `東証と名証の全上場銘柄（${master.length.toLocaleString('ja-JP')}件・${window.STOCK_MASTER_AS_OF}時点）から検索できます。`
+        + '数字4桁のコードのほか、186A のような英数字コードや銘柄名（ispace・神島化学 など）でも探せます。'
+        + `名証にしか上場していない${nseOnly}銘柄（岡谷鋼機・名工建設・中部日本放送 など）は、`
+        + '名証の日報から引け後の終値を読みます。';
     }
 
     el.sortBy.value = settings.sort;

@@ -38,6 +38,8 @@
     </p>
     <ul class="dialog-list">
       <li>取得先：Yahoo Finance のチャートAPI（株価・配当実績）</li>
+      <li>取得先：名古屋証券取引所の日報PDF（名証にしか上場していない銘柄の終値）。
+        全銘柄が1つのPDFにまとまっているので、銘柄コードも送信しません</li>
       <li>経由：CORS を通すための公開中継サービス（allorigins / r.jina.ai / codetabs のいずれか）</li>
       <li>送信される情報：<strong>証券コードのみ</strong>。保有株数・取得単価・メモは送信されません</li>
       <li>初回は確認ダイアログを表示し、同意しない限り通信しません</li>
